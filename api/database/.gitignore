@@ -1,0 +1,3 @@
+*.sqlite*
+seeders/legacy-data
+

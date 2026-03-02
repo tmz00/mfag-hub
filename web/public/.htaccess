@@ -1,0 +1,6 @@
+DirectoryIndex index.html
+<IfModule mod_headers.c>
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "private"
+  </FilesMatch>
+</IfModule>

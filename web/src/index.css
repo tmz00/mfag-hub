@@ -1,0 +1,979 @@
+@import url("/fonts/fonts.css");
+@import "tailwindcss";
+
+@theme {
+  /* Custom breakpoints */
+  --breakpoint-xs: 22rem; /* 352px */
+
+  /* Primary brand (teal) */
+  --color-primary-50: #e3efef;
+  --color-primary-100: #bed9d9;
+  --color-primary-200: #86b8b9;
+  --color-primary-300: #4a9596;
+  --color-primary-400: #147677;
+  --color-primary-500: #006a6b;
+  --color-primary-600: #004b4c;
+  --color-primary-700: #002f30;
+  --color-primary-800: #001e1f;
+  --color-primary-900: #001415;
+  --color-primary-950: #000a0a;
+  --color-primary: var(--color-primary-500);
+
+  /* Secondary brand (mint) */
+  --color-secondary-50: #edfbf8;
+  --color-secondary-100: #d4f5ee;
+  --color-secondary-200: #abebde;
+  --color-secondary-300: #79dccc;
+  --color-secondary-400: #4ec9b8;
+  --color-secondary-500: #32b3a3;
+  --color-secondary-600: #28978b;
+  --color-secondary-700: #237a72;
+  --color-secondary-800: #1f635f;
+  --color-secondary-900: #1b524f;
+  --color-secondary-950: #0f3433;
+  --color-secondary: var(--color-secondary-500);
+
+  /* Gradient colors for admin */
+  --color-admin-from: #9333ea; /* purple-600 */
+  --color-admin-to: #a855f7; /* purple-500 */
+
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(222.2 84% 4.9%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222.2 84% 4.9%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(222.2 84% 4.9%);
+  --color-muted: hsl(210 40% 96.1%);
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  --color-accent: hsl(210 40% 96.1%);
+  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-border: hsl(214.3 31.8% 91.4%);
+  --color-input: hsl(214.3 31.8% 91.4%);
+  --color-ring: #178e9e;
+
+  /* Border Radius */
+  --radius-sm: calc(0.5rem - 4px);
+  --radius-md: calc(0.5rem - 2px);
+  --radius-lg: 0.5rem;
+
+  /* Container */
+  --container-center: true;
+  --container-padding: 2rem;
+  --container-2xl: 1400px;
+
+  --font-sans: "Barlow", sans-serif;
+  --font-condensed: "Barlow Semi Condensed", sans-serif;
+}
+
+@layer base {
+  html {
+    @apply font-medium;
+    font-size: 18px;
+  }
+}
+
+@keyframes route-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+input[type="range"].compound-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+input[type="range"].compound-range::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  background: rgba(23, 142, 158, 0.5);
+  border-radius: 999px;
+}
+
+input[type="range"].compound-range::-moz-range-track {
+  height: 0.5rem;
+  background: rgba(23, 142, 158, 0.5);
+  border-radius: 999px;
+}
+
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 2.75rem;
+  line-height: 1.5;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1rem;
+}
+
+.route-transition-shell {
+  min-height: 100%;
+}
+
+.route-transition-enter {
+  animation: route-enter 0.22s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-transition-enter {
+    animation: none;
+  }
+}
+
+/* Quill Editor Styles */
+.handbook-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.handbook-editor .ql-toolbar {
+  border: none !important;
+  background: #f9fafb;
+  border-radius: 0.75rem 0.75rem 0 0;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  width: 100%;
+  margin-left: calc(-1 * var(--handbook-editor-padding, 0px));
+  margin-right: calc(-1 * var(--handbook-editor-padding, 0px));
+  padding-left: var(--handbook-editor-padding, 0px);
+  padding-right: var(--handbook-editor-padding, 0px);
+}
+
+.handbook-editor .ql-container {
+  border: none !important;
+  font-family: var(--font-sans);
+  flex: 1;
+  overflow-y: visible;
+}
+
+.handbook-editor .ql-editor {
+  min-height: 400px;
+  padding: var(--handbook-editor-content-padding, 0px);
+  overflow: visible;
+}
+
+.handbook-editor .ql-editor.ql-blank::before {
+  font-style: normal;
+  color: #9ca3af;
+}
+
+/* Header picker dropdown preview styles */
+.handbook-editor .ql-header .ql-picker-item[data-value="1"] {
+  padding: 0.35rem 0.5rem !important;
+  margin-bottom: 0.25rem;
+  border-bottom: 2px solid var(--color-primary-200);
+}
+
+.handbook-editor .ql-header .ql-picker-item[data-value="1"]::before {
+  font-size: 1.25rem !important;
+  font-weight: 700;
+  color: var(--color-primary-800);
+}
+
+.handbook-editor .ql-header .ql-picker-item[data-value="2"] {
+  padding: 0.35rem 0.5rem !important;
+  margin-bottom: 0.25rem;
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-200);
+  border-radius: 0.375rem;
+}
+
+.handbook-editor .ql-header .ql-picker-item[data-value="2"]::before {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-primary-700);
+}
+
+.handbook-editor .ql-header .ql-picker-item[data-value="3"] {
+  padding: 0.3rem 0.5rem !important;
+  margin-bottom: 0.25rem;
+}
+
+.handbook-editor .ql-header .ql-picker-item[data-value="3"]::before {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-primary-700);
+}
+
+.handbook-editor .ql-header .ql-picker-item:not([data-value]),
+.handbook-editor .ql-header .ql-picker-item[data-value=""] {
+  padding: 0.3rem 0.5rem !important;
+}
+
+.handbook-editor .ql-header .ql-picker-item:not([data-value])::before,
+.handbook-editor .ql-header .ql-picker-item[data-value=""]::before {
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+/* Also style the selected label in the toolbar */
+.handbook-editor .ql-header .ql-picker-label[data-value="1"]::before {
+  color: var(--color-primary-800);
+  font-weight: 700;
+}
+
+.handbook-editor .ql-header .ql-picker-label[data-value="2"]::before {
+  color: var(--color-primary-700);
+  font-weight: 700;
+}
+
+.handbook-editor .ql-header .ql-picker-label[data-value="3"]::before {
+  color: var(--color-primary-700);
+  font-weight: 600;
+}
+
+/* ─── Shared rich-content styles (editor WYSIWYG + reader view) ─── */
+:is(
+  .handbook-editor .ql-editor,
+  .handbook-content,
+  .faq-answer-editor .ql-editor
+) {
+  font-family: var(--font-sans) !important;
+  font-size: 1rem;
+  line-height: 1.625;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  h1 {
+  font-size: 1.25rem !important;
+  font-weight: 700;
+  color: var(--color-primary-800);
+  margin: 1.5rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid var(--color-primary-200);
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  p {
+  margin-bottom: 0.5rem;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  a:hover {
+  color: var(--color-primary-700);
+}
+
+/* PDF icon before PDF links (editor + reader) */
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".pdf" i]::before {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  margin-right: 0.3rem;
+  vertical-align: text-bottom;
+  background: url("/images/handbook-pdf.webp") no-repeat center / contain;
+}
+
+/* Image icon before image links (editor + reader) */
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".png" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".jpg" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".jpeg" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".gif" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".webp" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".svg" i]::before {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  margin-right: 0.3rem;
+  vertical-align: text-bottom;
+  background: url("/images/handbook-image.png") no-repeat center / contain;
+}
+
+/* Video icon before video links (editor + reader) */
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".mp4" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".mov" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".webm" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".m4v" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".avi" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content) a[href*=".mkv" i]::before {
+  content: "🎥";
+  display: inline-block;
+  width: 1.2em;
+  margin-right: 0.3rem;
+  vertical-align: text-bottom;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  strong,
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  b {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  s {
+  color: #9ca3af;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  blockquote {
+  border-left: 3px solid var(--color-primary-400);
+  background: var(--color-primary-50);
+  padding: 0.5rem 1rem;
+  margin: 0.75rem 0;
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #4b5563;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  blockquote
+  p:last-child {
+  margin-bottom: 0;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  ul,
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  ul {
+  list-style-type: disc;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  ol {
+  list-style-type: decimal;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  li {
+  margin-bottom: 0.25rem;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  li
+  > ul,
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  li
+  > ol {
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  code {
+  background: #f1f5f9;
+  color: var(--color-primary-700);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.875em;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  pre
+  code {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  hr {
+  border: none;
+  border-top: 1px solid var(--color-primary-200);
+  margin: 1rem 0;
+}
+
+/* ─── Details/Summary shared styles (editor + reader) ─── */
+:is(.handbook-content details, .ql-details-block) {
+  margin: 0.9rem 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+:is(.handbook-content summary, .ql-details-block .ql-details-summary) {
+  padding: 0.25rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  cursor: pointer;
+  list-style: none;
+  line-height: 1.35;
+}
+
+:is(.handbook-content summary, .ql-details-block .ql-details-summary)::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 0.26rem solid transparent;
+  border-bottom: 0.26rem solid transparent;
+  border-left: 0.42rem solid currentColor;
+  flex-shrink: 0;
+  transform-origin: 35% 50%;
+  transition: transform 0.2s;
+}
+
+.handbook-content summary::-webkit-details-marker {
+  display: none;
+}
+
+.handbook-content summary::marker {
+  content: "";
+}
+
+/* Reader summary uses block layout to avoid inline formatting shifts */
+.handbook-content summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 0;
+}
+
+.handbook-content summary > .summary-text {
+  min-width: 0;
+}
+
+.handbook-content summary::before {
+  position: static;
+  pointer-events: none;
+  transform: none;
+}
+
+/* Expanded chevron (reader) */
+.handbook-content details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+/* Expanded chevron (editor) */
+.ql-details-block:not(.is-collapsed) .ql-details-summary::before {
+  transform: rotate(90deg);
+}
+
+/* Collapsed state hides content (editor only). Reader uses animated details-answer. */
+.ql-details-block.is-collapsed .ql-details-content {
+  display: none;
+}
+
+/* Answer content indent + left border (editor: single wrapper div) */
+.ql-details-block .ql-details-content {
+  margin-left: calc(0.2rem + 1px);
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--color-primary-100);
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  font-size: 1rem;
+  line-height: 1.625;
+}
+
+.ql-details-block .ql-details-content:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px #3b82f6;
+  border-radius: 0.25rem;
+}
+
+.ql-details-block .ql-details-content p {
+  margin-bottom: 0.5rem;
+}
+
+.ql-details-block .ql-details-content ul,
+.ql-details-block .ql-details-content ol,
+.handbook-content .details-answer ul,
+.handbook-content .details-answer ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+  list-style-position: outside;
+}
+
+.ql-details-block .ql-details-content ul,
+.handbook-content .details-answer ul {
+  list-style-type: disc !important;
+}
+
+.ql-details-block .ql-details-content ol,
+.handbook-content .details-answer ol {
+  list-style-type: decimal !important;
+}
+
+.ql-details-block .ql-details-content li,
+.handbook-content .details-answer li {
+  display: list-item !important;
+  list-style: inherit !important;
+}
+
+.ql-details-block .ql-details-content li::before {
+  content: none !important;
+}
+
+/* Answer content indent + left border (reader: wrapper div, same approach as editor) */
+.handbook-content .details-answer {
+  margin-left: calc(0.2rem + 1px);
+  padding-left: 0.75rem;
+  border-left: 2px solid transparent;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 1rem;
+  line-height: 1.625;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height 0.32s ease,
+    opacity 0.22s ease,
+    padding-top 0.22s ease,
+    padding-bottom 0.22s ease,
+    border-color 0.22s ease;
+}
+
+.handbook-content details[open] > .details-answer {
+  border-left-color: var(--color-primary-100);
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .handbook-content .details-answer {
+    transition: none;
+  }
+}
+
+@media (min-height: 400px) {
+  .handbook-content details[open] > summary {
+    position: sticky;
+    top: var(--handbook-category-sticky-top, 0px);
+    z-index: 5;
+    background: #fff;
+  }
+}
+
+/* Editor-specific: summary is editable, use block layout so clicking
+   past text places cursor at end (flex causes cursor to jump to start) */
+.ql-details-block .ql-details-summary {
+  display: block;
+  position: relative;
+  padding-left: 1.125rem;
+  cursor: text;
+}
+
+.ql-details-block .ql-details-summary::before {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+.ql-details-block:not(.is-collapsed) .ql-details-summary::before {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+/* Nested details in reader */
+.handbook-content details details {
+  margin: 0.25rem 0.75rem 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+.handbook-content details details summary {
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.handbook-section-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: white;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  padding: 0.5rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.handbook-section-item {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  color: #374151;
+  background: transparent;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.handbook-section-item:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+/* Collapsible section toolbar button */
+.handbook-editor .ql-undo,
+.handbook-editor .ql-redo,
+.handbook-editor .ql-details {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: auto !important;
+  padding: 0 4px;
+  vertical-align: middle;
+}
+
+.handbook-editor .ql-undo::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 16px 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath fill='none' stroke='%236b7280' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' d='M7.2 6.2H3.9V2.9M3.9 6.2c1.2-2.1 3.5-3.5 6.1-3.5 3.9 0 7 3.1 7 7s-3.1 7-7 7c-2.6 0-4.9-1.4-6.1-3.5'/%3E%3C/svg%3E");
+}
+
+.handbook-editor .ql-redo::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 16px 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath fill='none' stroke='%236b7280' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' d='M10.8 6.2h3.3V2.9M14.1 6.2c-1.2-2.1-3.5-3.5-6.1-3.5-3.9 0-7 3.1-7 7s3.1 7 7 7c2.6 0 4.9-1.4 6.1-3.5'/%3E%3C/svg%3E");
+}
+
+.handbook-editor .ql-details::before {
+  content: "Q&A";
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.handbook-editor .ql-toolbar button.is-disabled,
+.handbook-editor .ql-toolbar .ql-picker.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Compact empty paragraphs in editors only. */
+:is(
+    .handbook-editor .ql-editor,
+    .faq-answer-editor .ql-editor
+  )
+  p:has(> br:only-child),
+:is(
+    .handbook-editor .ql-editor,
+    .faq-answer-editor .ql-editor
+  )
+  p:empty {
+  min-height: 0.75rem !important;
+  height: 0.75rem !important;
+  margin: 0.25rem 0 !important;
+  padding: 0 !important;
+}
+
+/* Fallback for browsers without :has() support */
+:is(
+    .handbook-editor .ql-editor,
+    .faq-answer-editor .ql-editor
+  )
+  p
+  > br:only-child {
+  display: block;
+  height: 0.75rem;
+  line-height: 0.75rem;
+  content: "";
+}
+
+/* Explicit height for truly empty paragraphs */
+:is(
+    .handbook-editor .ql-editor,
+    .faq-answer-editor .ql-editor
+  )
+  p:empty::before {
+  content: "\00a0";
+  display: block;
+  height: 0.75rem;
+}
+
+/* Preserve visible blank lines in handbook reader. */
+.handbook-content p:has(> br:only-child),
+.handbook-content p:empty {
+  min-height: 1.625rem !important;
+  height: 1.625rem !important;
+  margin: 0.5rem 0 !important;
+  padding: 0 !important;
+}
+
+.handbook-content p > br:only-child {
+  display: block;
+  height: 1.625rem;
+  line-height: 1.625rem;
+  content: "";
+}
+
+.handbook-content p:empty::before {
+  content: "\00a0";
+  display: block;
+  height: 1.625rem;
+}
+
+/* FAQ answer mini-editor in modal */
+.faq-answer-editor .ql-toolbar {
+  border: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  background: #f9fafb;
+  padding: 4px 8px !important;
+}
+
+.faq-answer-editor .ql-container {
+  border: none !important;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+}
+
+.faq-answer-editor .ql-editor {
+  min-height: 8rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.faq-answer-editor .ql-editor.ql-blank::before {
+  font-style: normal;
+  color: #9ca3af;
+}
+
+/* 1. Reset the default appearance */
+.thick-slider {
+  -webkit-appearance: none; /* For WebKit browsers */
+  appearance: none;
+  width: 100%;
+  border: 1px solid var(--color-gray-400);
+  border-radius: 6px;
+  background: transparent;
+}
+
+/* 2. Style the track (the "thicker" part) for WebKit browsers */
+.thick-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  background:
+    linear-gradient(var(--range-accent, var(--color-primary)) 0 0) 0 /
+      var(--range-fill, 0%) 100% no-repeat,
+    var(--color-gray-100);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* 3. Style the track for Mozilla Firefox */
+.thick-slider::-moz-range-track {
+  height: 6px;
+  background: var(--color-gray-100);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.thick-slider::-moz-range-progress {
+  height: 6px;
+  background: var(--range-accent, var(--color-primary));
+  border-radius: 6px;
+}
+
+/* 4. Style the thumb (the draggable handle) for WebKit browsers */
+.thick-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  background: var(--range-accent, var(--color-primary));
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: -7px; /* Centers the thumb vertically on the 6px track: (20px/2) - (6px/2) = -7px */
+}
+
+/* 5. Style the thumb for Mozilla Firefox */
+.thick-slider::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  background: var(--range-accent, var(--color-primary));
+  border-radius: 50%;
+  cursor: pointer;
+  /* Firefox doesn't typically require a negative margin-top */
+}
+
+@keyframes reorder-slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes reorder-slide-down {
+  from {
+    transform: translateY(-100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.reorder-move-up {
+  animation: reorder-slide-up 300ms ease-out;
+}
+
+.reorder-move-down {
+  animation: reorder-slide-down 300ms ease-out;
+}
+
+/* Premium row feedback animations */
+@keyframes row-highlight {
+  0% { box-shadow: 0 0 0 2.5px #10b981; }
+  60% { box-shadow: 0 0 0 2.5px rgba(16, 185, 129, 0.3); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.animate-row-highlight {
+  animation: row-highlight 1800ms ease-out;
+}
+
+@keyframes row-remove {
+  to { opacity: 0; transform: translateX(-16px) scale(0.97); }
+}
+
+.animate-row-remove {
+  animation: row-remove 280ms ease-in forwards;
+  pointer-events: none;
+}

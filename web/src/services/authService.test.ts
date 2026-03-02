@@ -1,0 +1,182 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const loadAuthModule = async () => {
+  vi.resetModules();
+  return import("./authService");
+};
+
+describe("authService", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("stores token, refresh token, and user after verifyOtp", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          token: "access-token",
+          refreshToken: "refresh-token",
+          user: {
+            id: 7,
+            email: "user@example.test",
+            accessLevel: "editor",
+            nickname: "Tester",
+            fullName: "Test User",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    const subscriber = vi.fn();
+    const unsubscribe = mod.authService.onAuthStateChanged(subscriber);
+
+    await mod.authService.verifyOtp({
+      email: "user@example.test",
+      otp: "123456",
+    });
+
+    expect(localStorage.getItem(mod.TOKEN_KEY)).toBe("access-token");
+    expect(localStorage.getItem(mod.REFRESH_TOKEN_KEY)).toBe("refresh-token");
+    expect(mod.authService.getCurrentUser()).toEqual({
+      uid: "7",
+      email: "user@example.test",
+      accessLevel: "editor",
+      nickname: "Tester",
+      fullName: "Test User",
+    });
+    expect(subscriber).toHaveBeenLastCalledWith({
+      uid: "7",
+      email: "user@example.test",
+      accessLevel: "editor",
+      nickname: "Tester",
+      fullName: "Test User",
+    });
+
+    unsubscribe();
+  });
+
+  it("adds Authorization header for authFetch when token exists", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.TOKEN_KEY, "token-1");
+
+    await mod.authFetch("/api/team", { method: "GET" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer token-1");
+  });
+
+  it("retries once after 401 when refresh succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Unauthenticated." }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.TOKEN_KEY, "old-token");
+
+    const ensureSpy = vi
+      .spyOn(mod.authService, "ensureSession")
+      .mockImplementation(async (forceRefresh?: boolean) => {
+        if (forceRefresh) {
+          localStorage.setItem(mod.TOKEN_KEY, "new-token");
+        }
+        return true;
+      });
+
+    const response = await mod.authFetch("/api/team", { method: "GET" });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(ensureSpy).toHaveBeenCalledWith(true);
+
+    const [, secondInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const secondHeaders = new Headers(secondInit.headers);
+    expect(secondHeaders.get("Authorization")).toBe("Bearer new-token");
+  });
+
+  it("forces sign-out after 401 when refresh fails", async () => {
+    const fetchMock = vi.mocked(vi.fn()).mockResolvedValue(
+      new Response(JSON.stringify({ message: "Unauthenticated." }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.TOKEN_KEY, "old-token");
+
+    vi.spyOn(mod.authService, "ensureSession").mockResolvedValue(false);
+    const signOutSpy = vi
+      .spyOn(mod.authService, "forceSignOutLocal")
+      .mockImplementation(() => {});
+
+    const response = await mod.authFetch("/api/team", { method: "GET" });
+
+    expect(response.status).toBe(401);
+    expect(signOutSpy).toHaveBeenCalledWith("/");
+  });
+
+  it("uses backend validation message in authJson errors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          errors: {
+            email: ["Email invalid"],
+          },
+        }),
+        {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.TOKEN_KEY, "token-1");
+
+    await expect(mod.authJson("/api/team", { method: "GET" })).rejects.toThrow(
+      "Email invalid",
+    );
+  });
+
+  it("surfaces a useful message from html error responses", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        "<!doctype html><html><head><title>SQLSTATE[42S02]: Base table or view not found</title></head><body>Server Error</body></html>",
+        {
+          status: 500,
+          headers: { "Content-Type": "text/html" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.TOKEN_KEY, "token-1");
+
+    await expect(mod.authJson("/api/team", { method: "GET" })).rejects.toThrow(
+      "SQLSTATE[42S02]: Base table or view not found",
+    );
+  });
+});
