@@ -104,6 +104,9 @@ create_fixture() {
   export BACKUP_ROOT="$TEST_ROOT/backups"
   export APP_PRIVATE_PATH="$TEST_ROOT/private"
   export BACKUP_RETENTION_COUNT="0"
+  export MYSQLDUMP_BIN="$TEST_BIN_DIR/mysqldump"
+  export MYSQL_BIN="$TEST_BIN_DIR/mysql"
+  export PHP_BIN="$TEST_BIN_DIR/php"
 
   mkdir -p "$BACKUP_ROOT" "$APP_PRIVATE_PATH"
   : > "$APP_PRIVATE_PATH/.gitignore"
@@ -229,6 +232,7 @@ test_export_database_uses_mariadb_dump_when_mysqldump_is_missing() {
 printf "%s\n" "$*" >> "${TEST_LOG_DIR:?}/mariadb-dump.args"
 printf "CREATE TABLE snapshot_test (id int);\n"
 '
+  export MYSQLDUMP_BIN="$TEST_BIN_DIR/mariadb-dump"
 
   run_command bash "$OPS_SCRIPTS_DIR/export-database.sh" --output "$TEST_ROOT/export.sql.gz"
   assert_status 0 || return 1
