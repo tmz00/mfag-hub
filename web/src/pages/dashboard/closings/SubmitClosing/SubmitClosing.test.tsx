@@ -169,9 +169,17 @@ vi.mock("../../../../services/closingsService", async () => {
   };
 });
 
-vi.mock("../_closingDisplay", () => ({
-  buildClosingDisplayModel: (input: unknown) => input,
-}));
+vi.mock("../_closingDisplay", async () => {
+  const actual =
+    await vi.importActual<typeof import("../_closingDisplay")>(
+      "../_closingDisplay",
+    );
+
+  return {
+    ...actual,
+    buildClosingDisplayModel: (input: unknown) => input,
+  };
+});
 
 vi.mock("../_ClosingDisplayBlock", () => ({
   default: (props: { model: { primaryName?: string } }) => (
