@@ -71,10 +71,12 @@ const Settings: Component = () => {
           <p class="text-base text-gray-600 mb-4">
             Sign out of your account on this device
           </p>
-          <Button variant="danger" onClick={handleLogout}>
-            <TbOutlineLogout class="h-4 w-4" />
-            Sign Out
-          </Button>
+          <div class="flex justify-center">
+            <Button variant="danger" onClick={handleLogout}>
+              <TbOutlineLogout class="h-4 w-4" />
+              Sign Out
+            </Button>
+          </div>
         </div>
       </div></PageBody>
     </PageShell>

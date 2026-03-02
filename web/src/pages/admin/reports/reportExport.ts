@@ -19,7 +19,18 @@ type BuildReportCanvasOptions = {
   maxRows: number;
   reportRangeLabel: string;
   logo: HTMLImageElement | null;
+  pixelScale?: number;
 };
+
+const DEFAULT_CANVAS_SCALE = 2;
+const MAX_CANVAS_SCALE = 6;
+
+function resolveCanvasScale(value?: number) {
+  const next = typeof value === "number" && Number.isFinite(value)
+    ? Math.round(value)
+    : DEFAULT_CANVAS_SCALE;
+  return Math.min(MAX_CANVAS_SCALE, Math.max(1, next));
+}
 
 function getThemeColor(varName: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -305,7 +316,7 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
     bottomFootnoteHeight +
     pageBottomPadding;
 
-  const scale = 2;
+  const scale = resolveCanvasScale(options.pixelScale);
   const canvas = document.createElement("canvas");
   canvas.width = width * scale;
   canvas.height = height * scale;

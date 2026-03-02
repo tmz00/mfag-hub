@@ -52,7 +52,11 @@ import {
 } from "../../../services/closingsService";
 import { authService } from "../../../services/authService";
 import { teamService } from "../../../services/teamService";
-import { calculateProductFyc } from "../../../utils/closingMetrics";
+import {
+  annualizePremium,
+  calculateProductFyc,
+  countInvalidPremiumFrequencyRows,
+} from "../../../utils/closingMetrics";
 import ClosingDisplayBlock from "./_ClosingDisplayBlock";
 import {
   buildClosingDisplayModel,
@@ -146,23 +150,9 @@ function calculateProductAfyp(product: ClosingProduct): number {
   let totalAfyp = 0;
 
   for (const qp of product.quantitiesAndPremiums) {
-    let annualized: number;
-    switch (qp.frequency) {
-      case "Annual":
-        annualized = qp.premium;
-        break;
-      case "Semi-Annual":
-        annualized = qp.premium * 2;
-        break;
-      case "Quarterly":
-        annualized = qp.premium * 4;
-        break;
-      case "Mthly-1":
-      case "Mthly-2":
-        annualized = qp.premium * 12;
-        break;
-      default:
-        annualized = qp.premium;
+    let annualized = annualizePremium(qp.premium, qp.frequency);
+    if (annualized === null) {
+      continue;
     }
 
     // Remove GST if applicable
@@ -176,23 +166,9 @@ function calculateProductAfyp(product: ClosingProduct): number {
   // Add rider AFYP (riders inherit parent's Single multiplier)
   for (const rider of product.riders || []) {
     for (const qp of rider.quantitiesAndPremiums) {
-      let annualized: number;
-      switch (qp.frequency) {
-        case "Annual":
-          annualized = qp.premium;
-          break;
-        case "Semi-Annual":
-          annualized = qp.premium * 2;
-          break;
-        case "Quarterly":
-          annualized = qp.premium * 4;
-          break;
-        case "Mthly-1":
-        case "Mthly-2":
-          annualized = qp.premium * 12;
-          break;
-        default:
-          annualized = qp.premium;
+      let annualized = annualizePremium(qp.premium, qp.frequency);
+      if (annualized === null) {
+        continue;
       }
 
       if (rider.gst > 0) {
@@ -382,6 +358,13 @@ const Closings: Component = () => {
         closing.fscCode === fscCode || closing.sharedFscCode === fscCode,
     );
   });
+  const invalidFrequencyRowCount = createMemo(() =>
+    filteredClosings().reduce(
+      (sum, closing) =>
+        sum + countInvalidPremiumFrequencyRows(closing.items || []),
+      0,
+    ),
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -680,6 +663,14 @@ const Closings: Component = () => {
                     </div>
                   }
                 >
+                  <Show when={invalidFrequencyRowCount() > 0}>
+                    <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+                      Excluded {invalidFrequencyRowCount()} premium row
+                      {invalidFrequencyRowCount() === 1 ? "" : "s"} with missing
+                      or invalid frequency from AFYP totals.
+                    </div>
+                  </Show>
+
                   <_ClosingsList
                     closings={filteredClosings}
                     stickyTopOffset={stickyControlsHeight()}

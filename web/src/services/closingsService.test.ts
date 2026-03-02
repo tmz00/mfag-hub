@@ -23,6 +23,7 @@ describe("closingsService", () => {
   it("calculates GST-aware annualized premium and commission values", () => {
     expect(getAnnualizedFYP(109, "Annual", 9)).toBe(100);
     expect(getAnnualizedFYP(25, "Quarterly")).toBe(100);
+    expect(getAnnualizedFYP(100, undefined)).toBe(0);
 
     expect(getFYC(109, "Annual", 10, 9)).toBe(10);
     expect(getFYC(100, "Mthly-2", 10)).toBe(20);

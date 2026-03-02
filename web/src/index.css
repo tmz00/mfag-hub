@@ -424,6 +424,18 @@ select {
   margin-bottom: 0.25rem;
 }
 
+/* Quill often stores list text as <li><p>...</p></li>; don't double-count
+   paragraph spacing inside list items. */
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  li
+  > p:last-child {
+  margin-bottom: 0;
+}
+
 :is(
     .handbook-editor .ql-editor,
     .handbook-content,

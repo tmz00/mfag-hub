@@ -136,9 +136,7 @@ const PlanEditor: Component = () => {
     () => productsCatalog()?.riders || [],
   );
   const typeEntries = createMemo(() =>
-    Object.entries(productsCatalog()?.types || {}).sort((a, b) =>
-      a[0].localeCompare(b[0]),
-    ),
+    Object.entries(productsCatalog()?.types || {}),
   );
 
   const [RemoveRiderModal, confirmRemoveRider] = createConfirm({
@@ -952,7 +950,7 @@ const PlanEditor: Component = () => {
                             onChange={(e) =>
                               handleProductTypeChange(e.currentTarget.value)
                             }
-                            class={`w-full rounded-md border px-2 py-2.5 text-base leading-6 text-slate-950 focus:outline-none focus:ring-2 ${
+                            class={`w-full rounded-md border px-3 py-2 text-base text-slate-950 focus:outline-none focus:ring-2 ${
                               product().type
                                 ? "border-slate-300 bg-white focus:border-primary focus:ring-primary/20"
                                 : "border-red-300 bg-red-50/40 focus:ring-red-200"

@@ -191,10 +191,12 @@ export const EditModal: Component<EditModalProps> = (props) => {
   return (
     <div
       data-disable-pull-refresh="true"
+      data-scroll-lock-allow-touch="true"
       class="fixed inset-0 z-50 flex min-h-dvh flex-col bg-white"
       style={{
         "--edit-modal-header-height": `${headerHeight()}px`,
         "--edit-modal-footer-height": `${footerHeight()}px`,
+        "touch-action": "pinch-zoom",
       }}
     >
       <div ref={headerRef}>
@@ -208,8 +210,8 @@ export const EditModal: Component<EditModalProps> = (props) => {
       </div>
 
       <div
-        data-scroll-lock-allow-touch="true"
         class={`flex-1 overflow-y-auto px-4 bg-gray-50 ${bodyClass()}`}
+        style={{ "touch-action": "pan-y pinch-zoom" }}
       >
         <div class={`mx-auto flex min-h-full w-full flex-col ${maxWidthClass()}`}>
           {props.children}

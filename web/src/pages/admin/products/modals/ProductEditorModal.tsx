@@ -511,7 +511,12 @@ const ProductEditorModal: Component<Props> = (props) => {
             <p class="mb-2 text-sm text-gray-500">
               Add riders/top-up items separately first if they do not yet exist.
             </p>
-            <div class="space-y-2 rounded-lg border border-gray-200 bg-white p-2">
+            <button
+              type="button"
+              onClick={() => setShowAttachablePicker(true)}
+              class="w-full space-y-2 rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:border-admin-from/30 hover:bg-admin-from/5 focus:outline-none focus:ring-2 focus:ring-admin-from/20"
+              aria-label="Choose rider or top-up items"
+            >
               <Show
                 when={selectedAttachableRiders().length}
                 fallback={
@@ -534,18 +539,11 @@ const ProductEditorModal: Component<Props> = (props) => {
                   </For>
                 </div>
               </Show>
-            </div>
-            <div class="flex justify-center pt-3">
-              <Button
-                type="button"
-                variant="adminOutline"
-                size="sm"
-                onClick={() => setShowAttachablePicker(true)}
-              >
+              <div class="flex items-center justify-between gap-2 text-sm font-medium text-admin-from">
+                <span>Tap to choose rider/top-up items</span>
                 <TbOutlinePlus class="h-3.5 w-3.5" />
-                Choose rider/top-up items
-              </Button>
-            </div>
+              </div>
+            </button>
           </div>
         </Show>
 

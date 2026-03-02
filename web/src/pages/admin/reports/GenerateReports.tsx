@@ -25,6 +25,7 @@ import {
   calculateClosingAfyp,
   calculateProductAfyc,
   calculateClosingAfyc,
+  countInvalidPremiumFrequencyRows,
 } from "../../../utils/closingMetrics";
 import {
   teamService,
@@ -95,80 +96,15 @@ function isIPadDevice() {
   );
 }
 
-function openPdfPreviewPage(
-  previewWindow: Window,
-  previewUrl: string,
-  filename: string,
-) {
-  const doc = previewWindow.document;
-  doc.title = filename;
-
-  const body = doc.body;
-  if (!body) {
+function openImagePreviewPage(previewWindow: Window, previewUrl: string) {
+  // Navigate the pre-opened window directly to the image URL.
+  // On Safari/iOS the browser renders the image natively and the share sheet
+  // lets users send it to WhatsApp, save to Photos, etc.
+  try {
     previewWindow.location.href = previewUrl;
-    return;
+  } catch {
+    // Cross-origin guard — shouldn't happen with blob URLs but handle safely.
   }
-
-  body.innerHTML = "";
-  body.style.margin = "0";
-  body.style.background = "#f3f4f6";
-  body.style.fontFamily =
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
-
-  const wrapper = doc.createElement("div");
-  wrapper.style.minHeight = "100vh";
-  wrapper.style.display = "flex";
-  wrapper.style.flexDirection = "column";
-
-  const header = doc.createElement("div");
-  header.style.padding = "16px";
-  header.style.background = "#ffffff";
-  header.style.borderBottom = "1px solid #e5e7eb";
-
-  const title = doc.createElement("div");
-  title.textContent = filename;
-  title.style.fontSize = "14px";
-  title.style.fontWeight = "600";
-  title.style.color = "#111827";
-
-  const hint = doc.createElement("div");
-  hint.textContent = "Use the download link below to keep the report filename.";
-  hint.style.marginTop = "6px";
-  hint.style.fontSize = "13px";
-  hint.style.color = "#4b5563";
-
-  const downloadLink = doc.createElement("a");
-  downloadLink.href = previewUrl;
-  downloadLink.download = filename;
-  downloadLink.textContent = `Download ${filename}`;
-  downloadLink.style.display = "inline-block";
-  downloadLink.style.marginTop = "10px";
-  downloadLink.style.fontSize = "14px";
-  downloadLink.style.fontWeight = "600";
-  downloadLink.style.color = "#0f766e";
-  downloadLink.style.textDecoration = "none";
-
-  header.append(title, hint, downloadLink);
-
-  const frame = doc.createElement("iframe");
-  frame.src = previewUrl;
-  frame.title = filename;
-  frame.style.flex = "1";
-  frame.style.width = "100%";
-  frame.style.minHeight = "70vh";
-  frame.style.border = "0";
-  frame.style.background = "#ffffff";
-
-  wrapper.append(header, frame);
-  body.appendChild(wrapper);
-
-  window.setTimeout(() => {
-    try {
-      downloadLink.click();
-    } catch {
-      // Leave the manual link visible as a fallback if the browser blocks it.
-    }
-  }, 150);
 }
 
 const BREAKDOWN_COLORS = [
@@ -1083,6 +1019,9 @@ function calculateProductSelfFyp(product: ClosingProduct): number {
   let total = 0;
   for (const qp of product.quantitiesAndPremiums || []) {
     let annualized = annualizePremium(qp.premium, qp.frequency);
+    if (annualized === null) {
+      continue;
+    }
     if (gst > 0) {
       annualized /= 1 + gst / 100;
     }
@@ -1106,6 +1045,9 @@ function calculateProductSelfAfyp(
   let total = 0;
   for (const qp of product.quantitiesAndPremiums || []) {
     let annualized = annualizePremium(qp.premium, qp.frequency);
+    if (annualized === null) {
+      continue;
+    }
     if (gst > 0) {
       annualized /= 1 + gst / 100;
     }
@@ -1130,6 +1072,9 @@ function calculateProductSelfAfyc(
   let total = 0;
   for (const qp of product.quantitiesAndPremiums || []) {
     let annualized = annualizePremium(qp.premium, qp.frequency);
+    if (annualized === null) {
+      continue;
+    }
     if (gst > 0) {
       annualized /= 1 + gst / 100;
     }
@@ -1383,6 +1328,14 @@ const Reports: Component = () => {
       sources: rawSourceBreakdown().length,
       products: rawProductBreakdown().length,
     };
+  });
+  const invalidFrequencyRowCount = createMemo(() => {
+    if (!hasLoadedRange()) return 0;
+    return closingsList().reduce(
+      (sum, closing) =>
+        sum + countInvalidPremiumFrequencyRows(closing.items || []),
+      0,
+    );
   });
 
   createEffect(() => {
@@ -1650,7 +1603,8 @@ const Reports: Component = () => {
       report.filenameTemplate || String(report.id),
       lastDay,
     );
-    return filenameBase.endsWith(".pdf") ? filenameBase : `${filenameBase}.pdf`;
+    const base = filenameBase.endsWith(".pdf") ? filenameBase.slice(0, -4) : filenameBase;
+    return `${base}.jpg`;
   };
 
   const downloadReport = async (report: ReportTemplate) => {
@@ -1677,10 +1631,7 @@ const Reports: Component = () => {
       }
 
       await document.fonts.ready;
-      const [{ buildReportCanvas, loadImage }, { jsPDF }] = await Promise.all([
-        import("./reportExport"),
-        import("jspdf"),
-      ]);
+      const { buildReportCanvas, loadImage } = await import("./reportExport");
       const logoAsset = await reportsService.getReportLogoAsset();
       let logo = null;
       try {
@@ -1702,33 +1653,33 @@ const Reports: Component = () => {
         maxRows,
         reportRangeLabel,
         logo,
+        pixelScale: 4,
       });
       if (!result) return;
-      const { canvas, width, height } = result;
+      const { canvas } = result;
       const filename = formatReportFilename(report);
 
-      const dataUrl = canvas.toDataURL("image/png");
-      const orientation = width >= height ? "landscape" : "portrait";
-      const pdf = new jsPDF({
-        orientation,
-        unit: "px",
-        format: [width, height],
-        compress: true,
-      });
-      pdf.addImage(dataUrl, "PNG", 0, 0, width, height);
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
+          "image/jpeg",
+          0.9,
+        ),
+      );
+      previewUrl = URL.createObjectURL(blob);
       if (previewWindow && !previewWindow.closed) {
-        const pdfBlob = pdf.output("blob") as Blob;
-        const namedPdf =
-          typeof File === "function"
-            ? new File([pdfBlob], filename, { type: "application/pdf" })
-            : pdfBlob;
-        previewUrl = URL.createObjectURL(namedPdf);
-        openPdfPreviewPage(previewWindow, previewUrl, filename);
+        openImagePreviewPage(previewWindow, previewUrl);
         window.setTimeout(() => {
           URL.revokeObjectURL(previewUrl!);
         }, 60_000);
       } else {
-        pdf.save(filename);
+        const a = document.createElement("a");
+        a.href = previewUrl;
+        a.download = filename;
+        a.click();
+        window.setTimeout(() => {
+          URL.revokeObjectURL(previewUrl!);
+        }, 10_000);
       }
     } catch (error) {
       if (previewWindow && !previewWindow.closed && previewUrl === null) {
@@ -1917,6 +1868,14 @@ const Reports: Component = () => {
                   )}
                 </Show>
               </div>
+
+              <Show when={invalidFrequencyRowCount() > 0}>
+                <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Excluded {formatCount(invalidFrequencyRowCount())} premium row
+                  {invalidFrequencyRowCount() === 1 ? "" : "s"} with missing or
+                  invalid frequency from AFYP totals.
+                </div>
+              </Show>
 
               <Show
                 when={closingsList().length > 0}

@@ -39,6 +39,7 @@ import ClosingDisplayBlock from "../_ClosingDisplayBlock";
 import { buildClosingDisplayModel, formatSourceLine } from "../_closingDisplay";
 import { resetClosingsListView } from "../_closingsListViewState";
 import { isAddonProduct } from "./_planUtils";
+import { normalizePremiumFrequency } from "../../../../utils/premiumFrequency";
 import {
   saveSubmitState,
   getSavedState,
@@ -122,6 +123,43 @@ const isDraftShared = (
 ): boolean => {
   if (draft.sharedFscNone) return false;
   return Boolean(draft.sharedFscCode || draft.sharedFscName);
+};
+
+const getPremiumRowsValidationError = (
+  rows: DraftPremiumRow[],
+): string | null => {
+  if (rows.length === 0) {
+    return "Add at least one premium row for every plan.";
+  }
+  if (rows.some((row) => row.premium > 0 && !row.frequency)) {
+    return "Select a frequency for every premium row.";
+  }
+  if (rows.some((row) => row.premium <= 0 && row.frequency)) {
+    return "Enter a premium for every premium row.";
+  }
+  if (rows.some((row) => row.premium <= 0 && !row.frequency)) {
+    return "Enter a premium and select a frequency for every premium row.";
+  }
+  return null;
+};
+
+const getProductsValidationError = (draft: ClosingDraft): string | null => {
+  if (draft.products.length === 0) {
+    return "Add at least one plan.";
+  }
+  for (const product of draft.products) {
+    const productError = getPremiumRowsValidationError(product.premiumRows);
+    if (productError) {
+      return productError;
+    }
+    for (const rider of product.riders) {
+      const riderError = getPremiumRowsValidationError(rider.premiumRows);
+      if (riderError) {
+        return riderError;
+      }
+    }
+  }
+  return null;
 };
 
 // For "Single" category, AFYP is 10% of the annualized premium
@@ -537,17 +575,10 @@ const SubmitClosing: Component = () => {
           nickname: existing.fscName || "",
         },
     );
-    const normalizeFrequency = (value?: string): PremiumFrequency => {
-      const allowed: PremiumFrequency[] = [
-        "Annual",
-        "Semi-Annual",
-        "Quarterly",
-        "Mthly-1",
-        "Mthly-2",
-      ];
-      return allowed.includes(value as PremiumFrequency)
-        ? (value as PremiumFrequency)
-        : "Annual";
+    const normalizeFrequency = (value?: string): PremiumFrequency | "" => {
+      return (
+        (normalizePremiumFrequency(value) as PremiumFrequency | undefined) || ""
+      );
     };
 
     // Convert Closing to ClosingDraft
@@ -566,7 +597,7 @@ const SubmitClosing: Component = () => {
             {
               id: `existing-${idx}-row-0`,
               premium: 0,
-              frequency: "Annual",
+              frequency: "",
               quantity: 1,
             },
           ];
@@ -609,7 +640,7 @@ const SubmitClosing: Component = () => {
                   {
                     id: `existing-rider-${idx}-${rIdx}-row-0`,
                     premium: 0,
-                    frequency: "Annual",
+                    frequency: "",
                     quantity: 1,
                   },
                 ],
@@ -706,23 +737,9 @@ const SubmitClosing: Component = () => {
     const referrals = draft().referrals;
     return typeof referrals === "number" && referrals >= 0;
   };
-  const hasValidProducts = () => {
-    const products = draft().products;
-    if (products.length === 0) return false;
-    return products.every((product) => {
-      if (product.premiumRows.length === 0) return false;
-      const productValid = product.premiumRows.every(
-        (row) => row.premium > 0 && Boolean(row.frequency),
-      );
-      if (!productValid) return false;
-      return product.riders.every((rider) => {
-        if (rider.premiumRows.length === 0) return false;
-        return rider.premiumRows.every(
-          (row) => row.premium > 0 && Boolean(row.frequency),
-        );
-      });
-    });
-  };
+  const getCurrentProductsValidationError = () =>
+    getProductsValidationError(draft());
+  const hasValidProducts = () => !getCurrentProductsValidationError();
 
   const formatCurrency = (value: number) =>
     value.toLocaleString("en-US", {
@@ -742,6 +759,17 @@ const SubmitClosing: Component = () => {
     const user = currentUser();
     if (!user) {
       setError("User not authenticated");
+      return;
+    }
+
+    if (!hasValidSource()) {
+      setError("Please select a source");
+      return;
+    }
+
+    const productsValidationError = getCurrentProductsValidationError();
+    if (productsValidationError) {
+      setError(productsValidationError);
       return;
     }
 
@@ -1187,8 +1215,10 @@ const SubmitClosing: Component = () => {
                       if (!hasValidReferrals()) {
                         summaryErrors.push("Missing referrals.");
                       }
-                      if (!hasValidProducts()) {
-                        summaryErrors.push("Missing plans.");
+                      const productsValidationError =
+                        getProductsValidationError(currentDraft);
+                      if (productsValidationError) {
+                        summaryErrors.push(productsValidationError);
                       }
                       return (
                         <div class="space-y-3">

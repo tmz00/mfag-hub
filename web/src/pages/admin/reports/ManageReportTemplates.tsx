@@ -282,6 +282,7 @@ const ManageReports: Component = () => {
       maxRows,
       reportRangeLabel: `${formatPreviewDate(startOfMonth)} - ${formatPreviewDate(reportDate)}`,
       logo,
+      pixelScale: 2,
     });
 
     if (!result) {

@@ -137,6 +137,41 @@ describe("reportExport", () => {
     expect(drawText).toContain("0.5");
   });
 
+  it("supports higher export pixel scales without changing layout size", () => {
+    const result = buildReportCanvas({
+      report: {
+        id: 25,
+        title: "High Res",
+        filenameTemplate: "{YYYYMMDD}_High_Res",
+        tableGap: 12,
+        tableWidth: 180,
+        indexTableWidth: 46,
+        includeIndexTable: false,
+        bottomFootnote: "",
+        tables: [],
+      },
+      reportDate: new Date("2026-02-15T00:00:00.000Z"),
+      tables: [
+        {
+          id: 26,
+          titleLines: ["TOP"],
+          valueLabel: "Cases",
+          rows: [{ name: "Alex", value: 1 }],
+        },
+      ],
+      maxRows: 1,
+      reportRangeLabel: "01 Feb 2026 - 15 Feb 2026",
+      logo: null,
+      pixelScale: 4,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.canvas.width).toBe((result?.width ?? 0) * 4);
+    expect(result?.canvas.height).toBe((result?.height ?? 0) * 4);
+    expect(result?.canvas.style.width).toBe(`${result?.width}px`);
+    expect(result?.canvas.style.height).toBe(`${result?.height}px`);
+  });
+
   it("renders a footer total row when enabled", () => {
     const tables: RenderTable[] = [
       {

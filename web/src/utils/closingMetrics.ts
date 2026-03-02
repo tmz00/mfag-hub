@@ -2,26 +2,19 @@ import type {
   ClosingProduct,
   ClosingProductQuantityAndPremium,
 } from "../services/closingsService";
+import {
+  annualizePremiumAmount,
+  countInvalidPremiumFrequencyRows,
+} from "./premiumFrequency";
 
 export function annualizePremium(
   premium: number,
   frequency?: string,
-): number {
-  switch (frequency) {
-    case "Annual":
-    case "Single":
-      return premium;
-    case "Semi-Annual":
-      return premium * 2;
-    case "Quarterly":
-      return premium * 4;
-    case "Mthly-1":
-    case "Mthly-2":
-      return premium * 12;
-    default:
-      return 0;
-  }
+): number | null {
+  return annualizePremiumAmount(premium, frequency);
 }
+
+export { countInvalidPremiumFrequencyRows };
 
 // ─── FYC ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +59,7 @@ export function calculateProductFyp(product: ClosingProduct): number {
   let total = 0;
   for (const qp of product.quantitiesAndPremiums || []) {
     let annualized = annualizePremium(qp.premium, qp.frequency);
+    if (annualized === null) continue;
     if (gst > 0) annualized /= 1 + gst / 100;
     total += annualized * qp.quantity;
   }
@@ -73,6 +67,7 @@ export function calculateProductFyp(product: ClosingProduct): number {
     const riderGst = rider.gst || 0;
     for (const qp of rider.quantitiesAndPremiums || []) {
       let annualized = annualizePremium(qp.premium, qp.frequency);
+      if (annualized === null) continue;
       if (riderGst > 0) annualized /= 1 + riderGst / 100;
       total += annualized * qp.quantity;
     }
@@ -100,6 +95,7 @@ export function calculateProductAfyp(product: ClosingProduct): number {
   let total = 0;
   for (const qp of product.quantitiesAndPremiums || []) {
     let annualized = annualizePremium(qp.premium, qp.frequency);
+    if (annualized === null) continue;
     if (gst > 0) annualized /= 1 + gst / 100;
     total += annualized * qp.quantity * fypMultiplier;
   }
@@ -107,6 +103,7 @@ export function calculateProductAfyp(product: ClosingProduct): number {
     const riderGst = rider.gst || 0;
     for (const qp of rider.quantitiesAndPremiums || []) {
       let annualized = annualizePremium(qp.premium, qp.frequency);
+      if (annualized === null) continue;
       if (riderGst > 0) annualized /= 1 + riderGst / 100;
       total += annualized * qp.quantity * fypMultiplier;
     }
@@ -135,6 +132,7 @@ export function calculateProductAfyc(product: ClosingProduct): number {
   let total = 0;
   for (const qp of product.quantitiesAndPremiums || []) {
     let annualized = annualizePremium(qp.premium, qp.frequency);
+    if (annualized === null) continue;
     if (gst > 0) annualized /= 1 + gst / 100;
     total += annualized * qp.quantity * fypMultiplier * rate;
   }
@@ -143,6 +141,7 @@ export function calculateProductAfyc(product: ClosingProduct): number {
     const riderRate = rider.fycRate || rate;
     for (const qp of rider.quantitiesAndPremiums || []) {
       let annualized = annualizePremium(qp.premium, qp.frequency);
+      if (annualized === null) continue;
       if (riderGst > 0) annualized /= 1 + riderGst / 100;
       total += annualized * qp.quantity * fypMultiplier * riderRate;
     }

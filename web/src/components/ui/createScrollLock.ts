@@ -27,6 +27,8 @@ let savedHtmlStyles:
     }
   | null = null;
 
+const LOCKED_TOUCH_ACTION = "pinch-zoom";
+
 const preventTouchMove = (event: TouchEvent) => {
   const target = event.target as Element | null;
   if (target?.closest("[data-scroll-lock-allow-touch='true']")) {
@@ -58,7 +60,8 @@ const applyGlobalScrollLock = () => {
   };
 
   html.style.overflow = "hidden";
-  html.style.touchAction = "none";
+  // Keep document scrolling locked, but still allow pinch-zoom while a modal is open.
+  html.style.touchAction = LOCKED_TOUCH_ACTION;
   html.style.overscrollBehavior = "none";
   body.style.overflow = "hidden";
   body.style.position = "fixed";
@@ -66,7 +69,7 @@ const applyGlobalScrollLock = () => {
   body.style.left = "0";
   body.style.right = "0";
   body.style.width = "100%";
-  body.style.touchAction = "none";
+  body.style.touchAction = LOCKED_TOUCH_ACTION;
   body.style.overscrollBehavior = "none";
   document.addEventListener("touchmove", preventTouchMove, { passive: false });
 };

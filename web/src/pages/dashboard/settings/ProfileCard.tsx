@@ -7,7 +7,7 @@ import {
   TbOutlinePencil,
   TbOutlineShield,
 } from "solid-icons/tb";
-import { IconButton } from "../../../components/ui";
+import { Button } from "../../../components/ui";
 import { authService } from "../../../services/authService";
 import { teamService, type TeamAgency } from "../../../services/teamService";
 
@@ -51,7 +51,8 @@ const ProfileCard: Component = () => {
     return agency?.name || "";
   });
 
-  const labelClass = "text-sm font-medium font-condensed uppercase tracking-wide text-gray-500";
+  const labelClass =
+    "text-sm font-medium font-condensed uppercase tracking-wide text-gray-500";
   const valueClass = "text-lg font-semibold text-gray-900";
 
   onMount(async () => {
@@ -102,21 +103,8 @@ const ProfileCard: Component = () => {
   return (
     <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm space-y-4">
       {/* Header Row */}
-      <div class="space-y-0.5">
-        <div class="flex items-start justify-between gap-2">
-          <div class="text-lg font-semibold text-gray-900">
-            {nickname() || "–"}
-          </div>
-          <IconButton
-            variant="primary"
-            onClick={() => navigate("/settings/edit-profile")}
-            aria-label="Edit profile"
-            title="Edit profile"
-            size="md"
-          >
-            <TbOutlinePencil />
-          </IconButton>
-        </div>
+      <div class="space-y-1">
+        <div class="text-lg font-semibold text-gray-900">{nickname() || "–"}</div>
         <div class="text-lg font-semibold text-gray-900">
           {fullName() || "–"}
         </div>
@@ -129,9 +117,7 @@ const ProfileCard: Component = () => {
         <div class="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
           <TbOutlineBuilding class="mt-0.75 h-5 w-5 shrink-0 text-gray-500" />
           <div class="min-w-0">
-            <h3 class={labelClass}>
-              Agency / FSC Code
-            </h3>
+            <h3 class={labelClass}>Agency / FSC Code</h3>
             <div class={valueClass}>{agencyName() || agencyCode() || "–"}</div>
             <div class="text-base text-gray-500">
               {agencyCode() || "–"} / {fscCode() || "–"}
@@ -143,9 +129,7 @@ const ProfileCard: Component = () => {
         <div class="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
           <TbOutlineShield class="mt-0.75 h-5 w-5 shrink-0 text-gray-500" />
           <div class="min-w-0">
-            <h3 class={labelClass}>
-              Access Level
-            </h3>
+            <h3 class={labelClass}>Access Level</h3>
             <div class={`${valueClass} capitalize`}>
               {accessLevel() || "standard"}
             </div>
@@ -156,9 +140,7 @@ const ProfileCard: Component = () => {
         <div class="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
           <TbOutlineCalendar class="mt-0.75 h-5 w-5 shrink-0 text-gray-500" />
           <div class="min-w-0">
-            <h3 class={labelClass}>
-              Birthdate
-            </h3>
+            <h3 class={labelClass}>Birthdate</h3>
             <div class={valueClass}>{formatDateLong(birthDate())}</div>
           </div>
         </div>
@@ -167,12 +149,22 @@ const ProfileCard: Component = () => {
         <div class="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
           <TbOutlineId class="mt-0.75 h-5 w-5 shrink-0 text-gray-500" />
           <div class="min-w-0">
-            <h3 class={labelClass}>
-              Contract Date
-            </h3>
+            <h3 class={labelClass}>Contract Date</h3>
             <div class={valueClass}>{formatDateLong(contractDate())}</div>
           </div>
         </div>
+      </div>
+
+      <div class="flex justify-center pt-1">
+        <Button
+          variant="primaryOutline"
+          onClick={() => navigate("/settings/edit-profile")}
+          aria-label="Edit profile"
+          title="Edit profile"
+        >
+          <TbOutlinePencil class="h-4 w-4" />
+          Edit
+        </Button>
       </div>
     </div>
   );

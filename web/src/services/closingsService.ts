@@ -1,3 +1,7 @@
+import {
+  annualizePremiumAmount,
+  normalizePremiumFrequency,
+} from "../utils/premiumFrequency";
 import { authJson } from "./authService";
 
 // ============ Types ============
@@ -82,27 +86,12 @@ export const premiumFrequencyLabels: Record<PremiumFrequency, string> = {
  */
 export function getAnnualizedFYP(
   premium: number,
-  frequency: PremiumFrequency,
+  frequency?: PremiumFrequency | null,
   gst: number = 0,
 ): number {
-  let annualized: number;
-  switch (frequency) {
-    case "Annual":
-    case "Single":
-      annualized = premium;
-      break;
-    case "Semi-Annual":
-      annualized = premium * 2;
-      break;
-    case "Quarterly":
-      annualized = premium * 4;
-      break;
-    case "Mthly-1":
-    case "Mthly-2":
-      annualized = premium * 12;
-      break;
-    default:
-      annualized = premium;
+  let annualized = annualizePremiumAmount(premium, frequency);
+  if (annualized === null) {
+    return 0;
   }
 
   if (gst > 0) {
@@ -221,7 +210,7 @@ class ApiClosingsService implements ClosingsService {
     return {
       quantity: Math.max(1, Number(value?.quantity) || 1),
       premium: Number(value?.premium) || 0,
-      frequency: this.toOptionalString(value?.frequency) as
+      frequency: normalizePremiumFrequency(this.toOptionalString(value?.frequency)) as
         | PremiumFrequency
         | undefined,
     };
