@@ -232,19 +232,49 @@ describe("reportsService", () => {
     );
   });
 
-  it("loads the default report logo when no custom logo is stored", async () => {
+  it("loads the default report logo from backend", async () => {
+    const originalCreateObjectURL = (
+      URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }
+    ).createObjectURL;
+    const createObjectUrlMock = vi.fn(() => "blob:report-logo-default");
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrlMock,
+    });
+
+    const blob = new Blob(["logo"], { type: "image/png" });
     authFetchMock.mockResolvedValue({
-      status: 404,
-      ok: false,
+      status: 200,
+      ok: true,
+      headers: {
+        get: vi.fn((name: string) =>
+          name.toLowerCase() === "x-report-logo-source" ? "default" : null,
+        ),
+      },
+      blob: vi.fn().mockResolvedValue(blob),
     });
 
     const logo = await reportsService.getReportLogoAsset();
 
     expect(logo).toEqual({
-      src: "/images/mfag_banner.png",
+      src: "blob:report-logo-default",
       isCustom: false,
     });
-    expect(authFetchMock).toHaveBeenCalledWith("/api/reports/logo", { method: "GET" });
+    expect(authFetchMock).toHaveBeenCalledWith("/api/reports/logo", {
+      method: "GET",
+    });
+
+    if (originalCreateObjectURL) {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectURL,
+      });
+    } else {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: undefined,
+      });
+    }
   });
 
   it("loads, uploads, and deletes a custom report logo", async () => {
@@ -261,6 +291,11 @@ describe("reportsService", () => {
     authFetchMock.mockResolvedValueOnce({
       status: 200,
       ok: true,
+      headers: {
+        get: vi.fn((name: string) =>
+          name.toLowerCase() === "x-report-logo-source" ? "custom" : null,
+        ),
+      },
       blob: vi.fn().mockResolvedValue(blob),
     });
 
@@ -310,7 +345,51 @@ describe("reportsService", () => {
         value: originalCreateObjectURL,
       });
     } else {
-      delete (URL as typeof URL & { createObjectURL?: unknown }).createObjectURL;
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: undefined,
+      });
     }
+  });
+
+  it("requests backend report PDF generation", async () => {
+    const blob = new Blob(["pdf"], { type: "application/pdf" });
+    authFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: vi.fn().mockResolvedValue(blob),
+    });
+
+    const result = await reportsService.generateReportPdf({
+      filename: "sample.pdf",
+      reportDate: "2026-02-14T00:00:00.000Z",
+      reportRangeLabel: "01 Feb 2026 - 14 Feb 2026",
+      maxRows: 1,
+      report: {
+        id: 1,
+        title: "Sample",
+        filenameTemplate: "{YYYYMMDD}_Sample",
+        tableGap: 15,
+        tableWidth: 170,
+        indexTableWidth: 46,
+        includeIndexTable: true,
+        tables: [],
+      },
+      tables: [
+        {
+          id: 10,
+          titleLines: ["TOP ADVISER"],
+          valueLabel: "FYC ($)",
+          metric: { type: "fyc" },
+          rows: [{ key: "A123", name: "Alex Tan", value: 1234.56 }],
+        },
+      ],
+    });
+
+    expect(result).toBe(blob);
+    expect(authFetchMock).toHaveBeenCalledWith("/api/reports/render-pdf", {
+      method: "POST",
+      body: expect.any(String),
+    });
   });
 });

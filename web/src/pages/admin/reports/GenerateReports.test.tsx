@@ -25,13 +25,7 @@ const {
   getSourcesMock,
   getProductsMock,
   getReportsMock,
-  getReportLogoAssetMock,
-  loadImageMock,
-  buildReportCanvasMock,
-  jsPdfCtorMock,
-  pdfAddImageMock,
-  pdfOutputMock,
-  pdfSaveMock,
+  generateReportPdfMock,
 } = vi.hoisted(() => ({
   getClosingsMock: vi.fn(),
   getClosingsDateRangeMock: vi.fn(),
@@ -40,13 +34,7 @@ const {
   getSourcesMock: vi.fn(),
   getProductsMock: vi.fn(),
   getReportsMock: vi.fn(),
-  getReportLogoAssetMock: vi.fn(),
-  loadImageMock: vi.fn(),
-  buildReportCanvasMock: vi.fn(),
-  jsPdfCtorMock: vi.fn(),
-  pdfAddImageMock: vi.fn(),
-  pdfOutputMock: vi.fn(),
-  pdfSaveMock: vi.fn(),
+  generateReportPdfMock: vi.fn(),
 }));
 
 vi.mock("solid-icons/tb", () => {
@@ -147,24 +135,13 @@ vi.mock("../../../services/sourcesService", () => ({
 vi.mock("../../../services/reportsService", () => ({
   reportsService: {
     getReports: (...args: unknown[]) => getReportsMock(...args),
-    getReportLogoAsset: (...args: unknown[]) => getReportLogoAssetMock(...args),
+    generateReportPdf: (...args: unknown[]) => generateReportPdfMock(...args),
   },
 }));
 
 vi.mock("../../../services/productsService", () => ({
   productsService: {
     getProducts: (...args: unknown[]) => getProductsMock(...args),
-  },
-}));
-
-vi.mock("./reportExport", () => ({
-  loadImage: (...args: unknown[]) => loadImageMock(...args),
-  buildReportCanvas: (...args: unknown[]) => buildReportCanvasMock(...args),
-}));
-
-vi.mock("jspdf", () => ({
-  jsPDF: function (...args: unknown[]) {
-    return jsPdfCtorMock(...args);
   },
 }));
 
@@ -197,13 +174,7 @@ describe("GenerateReports admin page", () => {
     getSourcesMock.mockReset();
     getProductsMock.mockReset();
     getReportsMock.mockReset();
-    getReportLogoAssetMock.mockReset();
-    loadImageMock.mockReset();
-    buildReportCanvasMock.mockReset();
-    jsPdfCtorMock.mockReset();
-    pdfAddImageMock.mockReset();
-    pdfOutputMock.mockReset();
-    pdfSaveMock.mockReset();
+    generateReportPdfMock.mockReset();
 
     getClosingsMock.mockResolvedValue([]);
     getClosingsDateRangeMock.mockResolvedValue({
@@ -228,31 +199,9 @@ describe("GenerateReports admin page", () => {
     getReportsMock.mockResolvedValue([
       buildTemplate(1, "District Top", "{YYYYMMDD}_Custom_TOP"),
     ]);
-    getReportLogoAssetMock.mockResolvedValue({
-      src: "/images/mfag_banner.png",
-      isCustom: false,
-    });
-
-    loadImageMock.mockResolvedValue({ width: 200, height: 50 });
-    buildReportCanvasMock.mockReturnValue({
-      canvas: {
-        toDataURL: () => "data:image/png;base64,AAAA",
-      },
-      width: 1200,
-      height: 800,
-    });
-
-    jsPdfCtorMock.mockImplementation(() => ({
-      addImage: pdfAddImageMock,
-      output: pdfOutputMock,
-      save: pdfSaveMock,
-    }));
-    pdfOutputMock.mockReturnValue(new Blob(["pdf"], { type: "application/pdf" }));
-
-    Object.defineProperty(document, "fonts", {
-      configurable: true,
-      value: { ready: Promise.resolve() },
-    });
+    generateReportPdfMock.mockResolvedValue(
+      new Blob(["pdf"], { type: "application/pdf" }),
+    );
   });
 
   afterEach(() => {
@@ -359,11 +308,15 @@ describe("GenerateReports admin page", () => {
     expect(screen.getByTestId("download-spinner")).toBeTruthy();
 
     await vi.waitFor(() => {
-      expect(getReportLogoAssetMock).toHaveBeenCalledTimes(1);
-      expect(loadImageMock).toHaveBeenCalledWith("/images/mfag_banner.png");
-      expect(pdfAddImageMock).toHaveBeenCalled();
-      expect(pdfSaveMock).toHaveBeenCalledWith("20260214_Custom_TOP.pdf");
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
+
+    const payload = generateReportPdfMock.mock.calls[0]?.[0] as {
+      filename?: string;
+      reportRangeLabel?: string;
+    };
+    expect(payload.filename).toBe("20260214_Custom_TOP.pdf");
+    expect(payload.reportRangeLabel).toBe("01 Feb 2026 - 14 Feb 2026");
   });
 
   it("lists every source and lets each breakdown section switch metrics", async () => {
@@ -648,7 +601,7 @@ describe("GenerateReports admin page", () => {
 
       await vi.waitFor(() => {
         expect(openSpy).toHaveBeenCalledWith("", "_blank");
-        expect(pdfSaveMock).not.toHaveBeenCalled();
+        expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
         expect(createObjectUrlMock).toHaveBeenCalledTimes(1);
         expect(anchorClickMock).toHaveBeenCalledTimes(1);
         expect(previewDocument.title).toBe("20260214_Custom_TOP.pdf");
@@ -729,10 +682,10 @@ describe("GenerateReports admin page", () => {
     fireEvent.click(screen.getByTitle("Download report"));
 
     await vi.waitFor(() => {
-      expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
 
-    const renderArgs = buildReportCanvasMock.mock.calls[0]?.[0] as {
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
       tables: Array<{ includeFooterTotalRow?: boolean }>;
     };
 
@@ -780,10 +733,10 @@ describe("GenerateReports admin page", () => {
     fireEvent.click(screen.getByTitle("Download report"));
 
     await vi.waitFor(() => {
-      expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
 
-    const renderArgs = buildReportCanvasMock.mock.calls[0]?.[0] as {
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
       tables: Array<{ id: number | string }>;
     };
 
@@ -853,10 +806,10 @@ describe("GenerateReports admin page", () => {
     fireEvent.click(screen.getByTitle("Download report"));
 
     await vi.waitFor(() => {
-      expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
 
-    const renderArgs = buildReportCanvasMock.mock.calls[0]?.[0] as {
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
       tables: Array<{ rows: Array<{ value: number }> }>;
     };
 
@@ -1007,10 +960,10 @@ describe("GenerateReports admin page", () => {
     fireEvent.click(screen.getByTitle("Download report"));
 
     await vi.waitFor(() => {
-      expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
 
-    const renderArgs = buildReportCanvasMock.mock.calls[0]?.[0] as {
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
       tables: Array<{ rows: Array<{ value: number }> }>;
     };
 
@@ -1112,10 +1065,10 @@ describe("GenerateReports admin page", () => {
     fireEvent.click(screen.getByTitle("Download report"));
 
     await vi.waitFor(() => {
-      expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
 
-    const renderArgs = buildReportCanvasMock.mock.calls[0]?.[0] as {
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
       tables: Array<{ rows: Array<{ value: number }> }>;
     };
 
@@ -1200,10 +1153,10 @@ describe("GenerateReports admin page", () => {
     fireEvent.click(screen.getByTitle("Download report"));
 
     await vi.waitFor(() => {
-      expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
 
-    const renderArgs = buildReportCanvasMock.mock.calls[0]?.[0] as {
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
       tables: Array<{ rows: Array<{ key: string; value: number }> }>;
     };
 
@@ -1294,10 +1247,10 @@ describe("GenerateReports admin page", () => {
     fireEvent.click(screen.getByTitle("Download report"));
 
     await vi.waitFor(() => {
-      expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
     });
 
-    const renderArgs = buildReportCanvasMock.mock.calls[0]?.[0] as {
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
       tables: Array<{ rows: Array<{ value: number }> }>;
     };
 

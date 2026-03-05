@@ -33,7 +33,8 @@ import {
 } from "../../../services/teamService";
 import {
   reportsService,
-  type ReportLogoAsset,
+  type ReportRenderRow,
+  type ReportRenderTable,
   type ReportTemplate,
   type ReportTableLayout,
 } from "../../../services/reportsService";
@@ -48,7 +49,6 @@ import {
   IconButton,
   Spinner,
 } from "../../../components/ui";
-import type { RenderTable, ReportRow } from "./reportExport";
 import { adminOptionForPath } from "../adminOptions";
 
 type DateRangeSelection = {
@@ -779,17 +779,29 @@ function formatAmount(value: number) {
   });
 }
 
-function releaseReportLogoAsset(asset: ReportLogoAsset | null | undefined) {
+function triggerPdfDownload(blob: Blob, filename: string) {
   if (
-    !asset?.isCustom ||
+    typeof document === "undefined" ||
     typeof URL === "undefined" ||
-    typeof URL.revokeObjectURL !== "function" ||
-    !asset.src.startsWith("blob:")
+    typeof URL.createObjectURL !== "function"
   ) {
     return;
   }
 
-  URL.revokeObjectURL(asset.src);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  if (typeof URL.revokeObjectURL === "function") {
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60_000);
+  }
 }
 
 function countProductUnits(product: ClosingProduct): number {
@@ -1227,7 +1239,7 @@ function closingMatchesSourceFilters(
 
 function buildRows(
   map: Map<string, { name: string; value: number }>,
-): ReportRow[] {
+): ReportRenderRow[] {
   return Array.from(map.entries())
     .map(([key, value]) => ({ key, ...value }))
     .sort((a, b) => {
@@ -1402,7 +1414,7 @@ const Reports: Component = () => {
     );
   };
 
-  const buildReportTables = (report: ReportTemplate): RenderTable[] => {
+  const buildReportTables = (report: ReportTemplate): ReportRenderTable[] => {
     const closingsData = closingsList();
     const teamMap = teamByFsc();
     const reportYear =
@@ -1502,7 +1514,7 @@ const Reports: Component = () => {
       }
     };
 
-    const makeTable = (table: ReportTableLayout): RenderTable => {
+    const makeTable = (table: ReportTableLayout): ReportRenderTable => {
       const map = new Map<string, { name: string; value: number }>();
       const includeAll = table.includeAllAdvisors !== false;
       const rookieYears = table.rookieYears ?? 2;
@@ -1676,18 +1688,6 @@ const Reports: Component = () => {
         }
       }
 
-      await document.fonts.ready;
-      const [{ buildReportCanvas, loadImage }, { jsPDF }] = await Promise.all([
-        import("./reportExport"),
-        import("jspdf"),
-      ]);
-      const logoAsset = await reportsService.getReportLogoAsset();
-      let logo = null;
-      try {
-        logo = await loadImage(logoAsset.src);
-      } finally {
-        releaseReportLogoAsset(logoAsset);
-      }
       const tables = buildReportTables(report);
       const { start, lastDay } = range;
       const reportDate = lastDay;
@@ -1695,29 +1695,16 @@ const Reports: Component = () => {
       const startLabel = formatDateLabel(start);
       const endLabel = formatDateLabel(lastDay);
       const reportRangeLabel = `${startLabel} - ${endLabel}`;
-      const result = buildReportCanvas({
+      const filename = formatReportFilename(report);
+      const pdfBlob = await reportsService.generateReportPdf({
         report,
-        reportDate,
+        reportDate: reportDate.toISOString(),
         tables,
         maxRows,
         reportRangeLabel,
-        logo,
+        filename,
       });
-      if (!result) return;
-      const { canvas, width, height } = result;
-      const filename = formatReportFilename(report);
-
-      const dataUrl = canvas.toDataURL("image/png");
-      const orientation = width >= height ? "landscape" : "portrait";
-      const pdf = new jsPDF({
-        orientation,
-        unit: "px",
-        format: [width, height],
-        compress: true,
-      });
-      pdf.addImage(dataUrl, "PNG", 0, 0, width, height);
       if (previewWindow && !previewWindow.closed) {
-        const pdfBlob = pdf.output("blob") as Blob;
         const namedPdf =
           typeof File === "function"
             ? new File([pdfBlob], filename, { type: "application/pdf" })
@@ -1728,7 +1715,7 @@ const Reports: Component = () => {
           URL.revokeObjectURL(previewUrl!);
         }, 60_000);
       } else {
-        pdf.save(filename);
+        triggerPdfDownload(pdfBlob, filename);
       }
     } catch (error) {
       if (previewWindow && !previewWindow.closed && previewUrl === null) {

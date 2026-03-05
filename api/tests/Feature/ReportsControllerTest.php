@@ -180,6 +180,262 @@ class ReportsControllerTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_authenticated_user_can_render_report_pdf(): void
+    {
+        $viewer = $this->createUser('standard');
+        Sanctum::actingAs($viewer);
+        Storage::fake('local');
+
+        $response = $this->postJson('/api/reports/render-pdf', [
+            'filename' => '20260214_Custom_TOP.pdf',
+            'reportDate' => '2026-02-14T00:00:00.000Z',
+            'reportRangeLabel' => '01 Feb 2026 - 14 Feb 2026',
+            'maxRows' => 1,
+            'report' => [
+                'title' => 'District Top',
+                'tableGap' => 15,
+                'tableWidth' => 170,
+                'indexTableWidth' => 46,
+                'includeIndexTable' => true,
+                'singleTable' => false,
+                'bottomFootnote' => '',
+            ],
+            'tables' => [
+                [
+                    'id' => 10,
+                    'titleLines' => ['TOP ADVISER', '(TOTAL FYC)'],
+                    'valueLabel' => 'FYC ($)',
+                    'rows' => [
+                        ['key' => 'A123', 'name' => 'Alex Tan', 'value' => 1234.56],
+                    ],
+                    'showIndex' => false,
+                    'highlightMin' => false,
+                    'includeFooterTotalRow' => true,
+                    'includeAllAdvisors' => true,
+                    'rookieFilter' => 'all',
+                    'rookieYears' => 2,
+                    'metric' => ['type' => 'fyc'],
+                ],
+            ],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('content-type'));
+        $this->assertStringContainsString(
+            'attachment;',
+            (string) $response->headers->get('content-disposition')
+        );
+        $this->assertStringStartsWith('%PDF-', (string) $response->getContent());
+    }
+
+    public function test_authenticated_user_can_render_single_table_report_pdf(): void
+    {
+        $viewer = $this->createUser('standard');
+        Sanctum::actingAs($viewer);
+        Storage::fake('local');
+
+        $response = $this->postJson('/api/reports/render-pdf', [
+            'filename' => 'single-table.pdf',
+            'reportDate' => '2026-02-14T00:00:00.000Z',
+            'reportRangeLabel' => '01 Feb 2026 - 14 Feb 2026',
+            'maxRows' => 2,
+            'report' => [
+                'title' => 'Single Table',
+                'tableGap' => 15,
+                'tableWidth' => 120,
+                'indexTableWidth' => 46,
+                'includeIndexTable' => true,
+                'singleTable' => true,
+                'bottomFootnote' => '',
+            ],
+            'tables' => [
+                [
+                    'id' => 10,
+                    'titleLines' => ['AFYP'],
+                    'valueLabel' => 'AFYP ($)',
+                    'rows' => [
+                        ['key' => 'A101', 'name' => 'Alex Tan', 'value' => 1000],
+                        ['key' => 'A202', 'name' => 'Blair Ong', 'value' => 2000],
+                    ],
+                    'showIndex' => false,
+                    'highlightMin' => false,
+                    'includeFooterTotalRow' => false,
+                    'includeAllAdvisors' => true,
+                    'rookieFilter' => 'all',
+                    'rookieYears' => 2,
+                    'metric' => ['type' => 'afyp'],
+                ],
+                [
+                    'id' => 11,
+                    'titleLines' => ['Cases'],
+                    'valueLabel' => 'Cases',
+                    'rows' => [
+                        ['key' => 'A101', 'name' => 'Alex Tan', 'value' => 3],
+                        ['key' => 'A202', 'name' => 'Blair Ong', 'value' => 2],
+                    ],
+                    'showIndex' => false,
+                    'highlightMin' => false,
+                    'includeFooterTotalRow' => true,
+                    'includeAllAdvisors' => true,
+                    'rookieFilter' => 'all',
+                    'rookieYears' => 2,
+                    'metric' => ['type' => 'countCases'],
+                ],
+            ],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('content-type'));
+        $this->assertStringStartsWith('%PDF-', (string) $response->getContent());
+    }
+
+    public function test_render_single_table_pdf_groups_adjacent_matching_column_labels(): void
+    {
+        $viewer = $this->createUser('standard');
+        Sanctum::actingAs($viewer);
+        Storage::fake('local');
+
+        $response = $this->postJson('/api/reports/render-pdf', [
+            'filename' => 'single-table-grouped-columns.pdf',
+            'reportDate' => '2026-02-14T00:00:00.000Z',
+            'reportRangeLabel' => '01 Feb 2026 - 14 Feb 2026',
+            'maxRows' => 1,
+            'report' => [
+                'title' => 'Grouped Labels',
+                'tableGap' => 20,
+                'tableWidth' => 80,
+                'indexTableWidth' => 46,
+                'includeIndexTable' => false,
+                'singleTable' => true,
+                'bottomFootnote' => '',
+            ],
+            'tables' => [
+                [
+                    'id' => 10,
+                    'titleLines' => ['AFYP'],
+                    'valueLabel' => 'Production',
+                    'rows' => [
+                        ['key' => 'A101', 'name' => 'Alex Tan', 'value' => 1000],
+                    ],
+                    'showIndex' => false,
+                    'highlightMin' => false,
+                    'includeFooterTotalRow' => false,
+                    'includeAllAdvisors' => true,
+                    'rookieFilter' => 'all',
+                    'rookieYears' => 2,
+                    'metric' => ['type' => 'afyp'],
+                ],
+                [
+                    'id' => 11,
+                    'titleLines' => ['Cases'],
+                    'valueLabel' => 'Production',
+                    'rows' => [
+                        ['key' => 'A101', 'name' => 'Alex Tan', 'value' => 2],
+                    ],
+                    'showIndex' => false,
+                    'highlightMin' => false,
+                    'includeFooterTotalRow' => false,
+                    'includeAllAdvisors' => true,
+                    'rookieFilter' => 'all',
+                    'rookieYears' => 2,
+                    'metric' => ['type' => 'countCases'],
+                ],
+                [
+                    'id' => 12,
+                    'titleLines' => ['FYC'],
+                    'valueLabel' => 'Production',
+                    'rows' => [
+                        ['key' => 'A101', 'name' => 'Alex Tan', 'value' => 500],
+                    ],
+                    'showIndex' => false,
+                    'highlightMin' => false,
+                    'includeFooterTotalRow' => false,
+                    'includeAllAdvisors' => true,
+                    'rookieFilter' => 'all',
+                    'rookieYears' => 2,
+                    'metric' => ['type' => 'fyc'],
+                ],
+            ],
+        ]);
+
+        $response->assertOk();
+        $content = (string) $response->getContent();
+        $matched = preg_match('/\/MediaBox \[0 0 ([0-9.]+) ([0-9.]+)\]/', $content, $matches);
+        $this->assertSame(1, $matched);
+
+        $pageWidth = (float) ($matches[1] ?? 0);
+        $this->assertEqualsWithDelta(460.0, $pageWidth, 0.01);
+    }
+
+    public function test_render_report_pdf_requires_required_payload_fields(): void
+    {
+        $viewer = $this->createUser('standard');
+        Sanctum::actingAs($viewer);
+
+        $response = $this->postJson('/api/reports/render-pdf', [
+            'report' => ['title' => 'Incomplete'],
+            'tables' => [],
+        ]);
+
+        $response->assertUnprocessable();
+    }
+
+    public function test_render_report_pdf_keeps_page_width_at_least_half_of_page_height(): void
+    {
+        $viewer = $this->createUser('standard');
+        Sanctum::actingAs($viewer);
+        Storage::fake('local');
+
+        $rows = [];
+        for ($i = 1; $i <= 60; $i++) {
+            $rows[] = [
+                'key' => 'A' . $i,
+                'name' => 'Advisor ' . $i,
+                'value' => 100 + $i,
+            ];
+        }
+
+        $response = $this->postJson('/api/reports/render-pdf', [
+            'filename' => 'narrow-check.pdf',
+            'reportDate' => '2026-02-14T00:00:00.000Z',
+            'reportRangeLabel' => '01 Feb 2026 - 14 Feb 2026',
+            'maxRows' => 60,
+            'report' => [
+                'title' => 'Narrow Width Guard',
+                'tableGap' => 15,
+                'tableWidth' => 90,
+                'indexTableWidth' => 46,
+                'includeIndexTable' => false,
+                'singleTable' => false,
+                'bottomFootnote' => '',
+            ],
+            'tables' => [
+                [
+                    'id' => 10,
+                    'titleLines' => ['TOP ADVISER'],
+                    'valueLabel' => 'Cases',
+                    'rows' => $rows,
+                    'showIndex' => false,
+                    'highlightMin' => false,
+                    'includeFooterTotalRow' => false,
+                    'includeAllAdvisors' => true,
+                    'rookieFilter' => 'all',
+                    'rookieYears' => 2,
+                    'metric' => ['type' => 'countCases'],
+                ],
+            ],
+        ]);
+
+        $response->assertOk();
+        $content = (string) $response->getContent();
+        $matched = preg_match('/\/MediaBox \[0 0 ([0-9.]+) ([0-9.]+)\]/', $content, $matches);
+        $this->assertSame(1, $matched);
+
+        $pageWidth = (float) ($matches[1] ?? 0);
+        $pageHeight = (float) ($matches[2] ?? 0);
+        $this->assertGreaterThanOrEqual(($pageHeight / 2) - 0.01, $pageWidth);
+    }
+
     public function test_admin_can_list_and_delete_non_expired_backups(): void
     {
         $admin = $this->createUser('admin');
@@ -216,17 +472,19 @@ class ReportsControllerTest extends TestCase
         $this->assertDatabaseMissing('report_backups', ['id' => $backupId]);
     }
 
-    public function test_show_logo_returns_not_found_when_not_configured(): void
+    public function test_show_logo_returns_default_logo_when_custom_logo_not_configured(): void
     {
         $viewer = $this->createUser('standard');
         Sanctum::actingAs($viewer);
         Storage::fake('local');
 
-        $this->get('/api/reports/logo')
-            ->assertNotFound()
-            ->assertJson([
-                'message' => 'Report logo not found.',
-            ]);
+        $response = $this->get('/api/reports/logo');
+        $response->assertOk();
+        $this->assertSame('default', $response->headers->get('X-Report-Logo-Source'));
+        $this->assertStringStartsWith(
+            'image/',
+            (string) $response->headers->get('content-type')
+        );
     }
 
     public function test_admin_can_upload_show_and_delete_custom_report_logo(): void
@@ -247,6 +505,7 @@ class ReportsControllerTest extends TestCase
 
         $show = $this->get('/api/reports/logo');
         $show->assertOk();
+        $this->assertSame('custom', $show->headers->get('X-Report-Logo-Source'));
         $this->assertStringStartsWith(
             'image/',
             (string) $show->headers->get('content-type')

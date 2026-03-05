@@ -169,8 +169,7 @@ const revokeObjectUrl = (src: string | null | undefined) => {
 };
 
 const releaseReportLogoAsset = (asset: ReportLogoAsset | null | undefined) => {
-  if (!asset?.isCustom) return;
-  revokeObjectUrl(asset.src);
+  revokeObjectUrl(asset?.src);
 };
 
 const ManageReports: Component = () => {
@@ -303,7 +302,7 @@ const ManageReports: Component = () => {
 
   createEffect(() => {
     const asset = reportLogoAsset();
-    const nextUrl = asset?.isCustom ? asset.src : null;
+    const nextUrl = asset?.src?.startsWith("blob:") ? asset.src : null;
     if (currentLogoPreviewUrl && currentLogoPreviewUrl !== nextUrl) {
       revokeObjectUrl(currentLogoPreviewUrl);
     }

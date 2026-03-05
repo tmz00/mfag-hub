@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Reports\ReportPdfGenerator;
 use App\Services\AdminUndoService;
 use App\Services\ReportTemplateStore;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use InvalidArgumentException;
 use Throwable;
 
 class ReportsController extends Controller
@@ -21,7 +23,8 @@ class ReportsController extends Controller
     private const ALLOWED_LOGO_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
     public function __construct(
         private readonly ReportTemplateStore $reportTemplateStore,
-        private readonly AdminUndoService $adminUndoService
+        private readonly AdminUndoService $adminUndoService,
+        private readonly ReportPdfGenerator $reportPdfGenerator
     ) {
     }
 
@@ -34,27 +37,30 @@ class ReportsController extends Controller
 
     public function showLogo()
     {
-        $path = $this->currentLogoPath();
-        if ($path === null) {
-            return response()->json([
-                'message' => 'Report logo not found.',
-            ], 404);
-        }
-
         $storage = Storage::disk(self::LOGO_DISK);
-        if (!$storage->exists($path)) {
-            return response()->json([
-                'message' => 'Report logo not found.',
-            ], 404);
+        $customPath = $this->currentLogoPath();
+        if ($customPath !== null && $storage->exists($customPath)) {
+            return response()->file(
+                $storage->path($customPath),
+                $this->logoHeadersForPath(
+                    $storage->path($customPath),
+                    'custom',
+                    $storage->mimeType($customPath)
+                )
+            );
         }
 
-        $headers = [];
-        $mimeType = $storage->mimeType($path);
-        if (is_string($mimeType) && $mimeType !== '') {
-            $headers['Content-Type'] = $mimeType;
+        $defaultPath = $this->defaultLogoAbsolutePath();
+        if ($defaultPath !== null) {
+            return response()->file(
+                $defaultPath,
+                $this->logoHeadersForPath($defaultPath, 'default')
+            );
         }
 
-        return response()->file($storage->path($path), $headers);
+        return response()->json([
+            'message' => 'Report logo not found.',
+        ], 404);
     }
 
     public function update(Request $request): JsonResponse
@@ -90,6 +96,46 @@ class ReportsController extends Controller
         return response()->json([
             'saved' => true,
             'reports' => $savedReports,
+        ]);
+    }
+
+    public function renderPdf(Request $request)
+    {
+        $payload = $request->validate([
+            'report' => ['required', 'array'],
+            'tables' => ['required', 'array', 'min:1', 'max:30'],
+            'reportDate' => ['required', 'date'],
+            'reportRangeLabel' => ['required', 'string', 'max:120'],
+            'maxRows' => ['nullable', 'integer', 'min:1', 'max:500'],
+            'filename' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        try {
+            $generated = $this->reportPdfGenerator->generate(
+                $payload,
+                $this->resolveLogoAbsolutePath()
+            );
+        } catch (InvalidArgumentException $error) {
+            return response()->json([
+                'message' => $error->getMessage(),
+            ], 422);
+        } catch (Throwable $error) {
+            report($error);
+            return response()->json([
+                'message' => 'Unable to generate report PDF.',
+            ], 500);
+        }
+
+        $filename = (string) ($generated['filename'] ?? 'report.pdf');
+        $content = (string) ($generated['content'] ?? '');
+        $asciiFilename = $this->asciiFilename($filename);
+
+        return response($content, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $asciiFilename .
+                '"; filename*=UTF-8\'\'' . rawurlencode($filename),
+            'Content-Length' => (string) strlen($content),
+            'Cache-Control' => 'no-store, max-age=0',
         ]);
     }
 
@@ -223,6 +269,53 @@ class ReportsController extends Controller
         }
 
         return null;
+    }
+
+    private function resolveLogoAbsolutePath(): ?string
+    {
+        $path = $this->currentLogoPath();
+        if ($path !== null) {
+            $storage = Storage::disk(self::LOGO_DISK);
+            $absolute = $storage->path($path);
+            if (is_file($absolute)) {
+                return $absolute;
+            }
+        }
+
+        return $this->defaultLogoAbsolutePath();
+    }
+
+    private function asciiFilename(string $filename): string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9._()\- ]+/', '_', $filename) ?: 'report.pdf';
+        $trimmed = trim($safe);
+        return $trimmed !== '' ? $trimmed : 'report.pdf';
+    }
+
+    private function defaultLogoAbsolutePath(): ?string
+    {
+        $path = public_path('images/mfag_banner.png');
+        return is_file($path) ? $path : null;
+    }
+
+    private function logoHeadersForPath(
+        string $path,
+        string $source,
+        mixed $providedMimeType = null
+    ): array {
+        $headers = [
+            'X-Report-Logo-Source' => $source,
+            'Cache-Control' => 'no-store, max-age=0',
+        ];
+
+        $mimeType = is_string($providedMimeType) && trim($providedMimeType) !== ''
+            ? trim($providedMimeType)
+            : mime_content_type($path);
+        if (is_string($mimeType) && trim($mimeType) !== '') {
+            $headers['Content-Type'] = trim($mimeType);
+        }
+
+        return $headers;
     }
 
     private function deleteLogoFiles(): void

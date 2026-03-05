@@ -1,6 +1,6 @@
 import { authFetch, authJson } from "./authService";
 
-export const DEFAULT_REPORT_LOGO_PATH = "/images/mfag_banner.png";
+export const DEFAULT_REPORT_LOGO_PATH = "/api/reports/logo";
 
 export type ReportValueFormat = "currency" | "count" | "number";
 export type RookieFilterMode = "rookies" | "nonRookies" | "all";
@@ -58,6 +58,27 @@ export type ReportTemplate = {
   updatedAt?: string;
 };
 
+export type ReportRenderRow = {
+  key?: string;
+  name: string;
+  value: number;
+};
+
+export type ReportRenderTable = Omit<ReportTableLayout, "id"> & {
+  id: ReportTableLayout["id"] | "index-only";
+  rows: ReportRenderRow[];
+  indexOnly?: boolean;
+};
+
+export type GenerateReportPdfPayload = {
+  report: ReportTemplate;
+  reportDate: string;
+  reportRangeLabel: string;
+  tables: ReportRenderTable[];
+  maxRows: number;
+  filename?: string;
+};
+
 export type ReportBackup = {
   id: string;
   data: ReportTemplate[];
@@ -79,6 +100,7 @@ export interface ReportsService {
   getReportLogoAsset(): Promise<ReportLogoAsset>;
   uploadReportLogo(file: File): Promise<void>;
   deleteReportLogo(): Promise<void>;
+  generateReportPdf(payload: GenerateReportPdfPayload): Promise<Blob>;
 }
 
 type ReportsGetResponse =
@@ -299,11 +321,13 @@ class ApiReportsService implements ReportsService {
     }
 
     await this.throwIfNotOk(response, "Unable to load report logo");
+    const source =
+      (response.headers.get("X-Report-Logo-Source") || "").toLowerCase();
     const blob = await response.blob();
 
     return {
       src: URL.createObjectURL(blob),
-      isCustom: true,
+      isCustom: source === "custom",
     };
   }
 
@@ -325,6 +349,16 @@ class ApiReportsService implements ReportsService {
     });
 
     await this.throwIfNotOk(response, "Unable to delete report logo");
+  }
+
+  async generateReportPdf(payload: GenerateReportPdfPayload): Promise<Blob> {
+    const response = await this.request("/api/reports/render-pdf", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    await this.throwIfNotOk(response, "Unable to generate report PDF");
+    return response.blob();
   }
 }
 

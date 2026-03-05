@@ -51,6 +51,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::delete('/closings/{id}', [ClosingsController::class, 'destroy'])->whereNumber('id');
     Route::get('/reports', [ReportsController::class, 'show']);
     Route::get('/reports/logo', [ReportsController::class, 'showLogo']);
+    Route::post('/reports/render-pdf', [ReportsController::class, 'renderPdf']);
     Route::get('/products', [ProductCatalogController::class, 'show']);
     Route::get('/sources', [SourcesController::class, 'index']);
     Route::get('/notifications', [NotificationController::class, 'index']);

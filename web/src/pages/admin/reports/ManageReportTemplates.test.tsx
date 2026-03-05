@@ -124,7 +124,7 @@ vi.mock("../../../components/ui", () => ({
 }));
 
 vi.mock("../../../services/reportsService", () => ({
-  DEFAULT_REPORT_LOGO_PATH: "/images/mfag_banner.png",
+  DEFAULT_REPORT_LOGO_PATH: "/api/reports/logo",
   reportsService: {
     getReports: (...args: unknown[]) => getReportsMock(...args),
     setReports: (...args: unknown[]) => setReportsMock(...args),
@@ -200,7 +200,7 @@ describe("ManageReportTemplates admin page", () => {
     ]);
     setReportsMock.mockImplementation(async (payload: unknown) => payload);
     getReportLogoAssetMock.mockResolvedValue({
-      src: "/images/mfag_banner.png",
+      src: "/api/reports/logo",
       isCustom: false,
     });
     uploadReportLogoMock.mockResolvedValue(undefined);
@@ -499,7 +499,7 @@ describe("ManageReportTemplates admin page", () => {
 
     const preview = screen.getByAltText("Preview for Top Stats") as HTMLImageElement;
     expect(preview.getAttribute("src")).toBe("data:image/png;base64,preview");
-    expect(loadImageMock).toHaveBeenCalledWith("/images/mfag_banner.png");
+    expect(loadImageMock).toHaveBeenCalledWith("/api/reports/logo");
     expect(buildReportCanvasMock).toHaveBeenCalledTimes(1);
   });
 
