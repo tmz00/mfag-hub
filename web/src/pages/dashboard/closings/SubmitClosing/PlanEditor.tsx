@@ -60,7 +60,6 @@ import {
   setPendingHighlightProductId,
   setPendingScrollToAddNewBusiness,
 } from "./_submitStore";
-import { CgDollar } from "solid-icons/cg";
 
 const PlanEditor: Component = () => {
   const navigate = useNavigate();
@@ -94,6 +93,7 @@ const PlanEditor: Component = () => {
     scope: "product" | "rider";
     riderIndex?: number;
     rowIndex: number | null;
+    quantity: string;
     premium: string;
     frequency: PremiumFrequency | "";
   } | null>(null);
@@ -199,10 +199,76 @@ const PlanEditor: Component = () => {
 
   // --- Handlers ---
 
+  const getCatalogShortNameForProduct = (
+    product: DraftProduct,
+  ): string | null => {
+    if (product.isRider) {
+      const riders = ridersCatalog();
+      const match =
+        riders.find(
+          (rider) =>
+            String(rider.id || "") === String(product.productId || "") &&
+            (rider.fullName || "") === (product.fullName || "") &&
+            (rider.category || "") === (product.category || ""),
+        ) ||
+        riders.find(
+          (rider) => String(rider.id || "") === String(product.productId || ""),
+        );
+      const shortName = String(match?.shortName || "").trim();
+      return shortName || null;
+    }
+
+    const plans = basePlans();
+    const match =
+      plans.find(
+        (plan) =>
+          plan.id === product.productId &&
+          (plan.fullName || "") === (product.fullName || "") &&
+          (plan.category || "") === (product.category || ""),
+      ) || plans.find((plan) => plan.id === product.productId);
+    const shortName = String(match?.shortName || "").trim();
+    return shortName || null;
+  };
+
+  const buildShortNameState = (
+    product: DraftProduct,
+    value: string,
+  ): Pick<DraftProduct, "shortName" | "shortNameManuallyEdited"> => {
+    const catalogDefault = getCatalogShortNameForProduct(product);
+    const fallbackDefault = String(planData.product.shortName || "");
+    const defaultShortName = (catalogDefault ?? fallbackDefault).trim();
+    const normalizedValue = value.trim();
+
+    return {
+      shortName: value,
+      shortNameManuallyEdited: normalizedValue !== defaultShortName,
+    };
+  };
+
   const handleProductShortNameChange = (value: string) => {
-    setEditingProduct((current) =>
-      current ? { ...current, shortName: value } : current,
-    );
+    setEditingProduct((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        ...buildShortNameState(current, value),
+      };
+    });
+  };
+
+  const handleProductShortNameBlur = () => {
+    setEditingProduct((current) => {
+      if (!current) return current;
+      const trimmed = String(current.shortName || "").trim();
+      const nextState = buildShortNameState(current, trimmed);
+      if (
+        current.shortName === nextState.shortName &&
+        Boolean(current.shortNameManuallyEdited) ===
+          Boolean(nextState.shortNameManuallyEdited)
+      ) {
+        return current;
+      }
+      return { ...current, ...nextState };
+    });
   };
 
   const handleProductFycRateChange = (value: string) => {
@@ -266,23 +332,6 @@ const PlanEditor: Component = () => {
     });
   };
 
-  const handleDuplicateProductRow = (rowIndex: number) => {
-    const newId = generateRowId();
-    setEditingProduct((current) => {
-      if (!current) return current;
-      const rows = [...current.premiumRows];
-      const sourceRow = rows[rowIndex];
-      rows.splice(rowIndex + 1, 0, {
-        id: newId,
-        premium: sourceRow.premium,
-        frequency: sourceRow.frequency,
-        quantity: 1,
-      });
-      return { ...current, premiumRows: rows };
-    });
-    highlightRow(newId);
-  };
-
   const handleRemoveProductRow = (rowIndex: number) => {
     const product = editingProduct();
     if (!product) return;
@@ -340,25 +389,6 @@ const PlanEditor: Component = () => {
     });
   };
 
-  const handleDuplicateRiderRow = (riderIndex: number, rowIndex: number) => {
-    const newId = generateRowId();
-    setEditingProduct((current) => {
-      if (!current) return current;
-      const riders = [...current.riders];
-      const rows = [...riders[riderIndex].premiumRows];
-      const sourceRow = rows[rowIndex];
-      rows.splice(rowIndex + 1, 0, {
-        id: newId,
-        premium: sourceRow.premium,
-        frequency: sourceRow.frequency,
-        quantity: 1,
-      });
-      riders[riderIndex] = { ...riders[riderIndex], premiumRows: rows };
-      return { ...current, riders };
-    });
-    highlightRow(newId);
-  };
-
   const handleRemoveRiderRow = (riderIndex: number, rowIndex: number) => {
     const product = editingProduct();
     if (!product) return;
@@ -394,6 +424,7 @@ const PlanEditor: Component = () => {
     setRowEditor({
       scope: "product",
       rowIndex: rowIndex ?? null,
+      quantity: row ? String(Math.max(1, row.quantity || 1)) : "1",
       premium: row ? String(row.premium || "") : "",
       frequency: defaultFrequency,
     });
@@ -419,6 +450,7 @@ const PlanEditor: Component = () => {
       scope: "rider",
       riderIndex,
       rowIndex: rowIndex ?? null,
+      quantity: row ? String(Math.max(1, row.quantity || 1)) : "1",
       premium: row ? String(row.premium || "") : "",
       frequency: defaultFrequency,
     });
@@ -433,12 +465,25 @@ const PlanEditor: Component = () => {
   const saveRowEditor = () => {
     const editor = rowEditor();
     if (!editor) return;
+    if (!editor.quantity.trim()) {
+      setRowEditorError("Quantity is required.");
+      return;
+    }
+    const parsedQuantity = Number(editor.quantity);
+    if (
+      !Number.isFinite(parsedQuantity) ||
+      !Number.isInteger(parsedQuantity) ||
+      parsedQuantity <= 0
+    ) {
+      setRowEditorError("Quantity must be a positive whole number.");
+      return;
+    }
     if (!editor.premium.trim()) {
       setRowEditorError("Premium is required.");
       return;
     }
-    const parsed = parseFloat(editor.premium);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    const parsedPremium = parseFloat(editor.premium);
+    if (!Number.isFinite(parsedPremium) || parsedPremium <= 0) {
       setRowEditorError("Premium must be a positive number.");
       return;
     }
@@ -456,14 +501,15 @@ const PlanEditor: Component = () => {
         if (editor.rowIndex === null) {
           rows.push({
             id: newId!,
-            premium: parsed,
+            premium: parsedPremium,
             frequency: editor.frequency,
-            quantity: 1,
+            quantity: parsedQuantity,
           });
         } else {
           rows[editor.rowIndex] = {
             ...rows[editor.rowIndex],
-            premium: parsed,
+            quantity: parsedQuantity,
+            premium: parsedPremium,
             frequency: editor.frequency,
           };
         }
@@ -478,14 +524,15 @@ const PlanEditor: Component = () => {
       if (editor.rowIndex === null) {
         rows.push({
           id: newId!,
-          premium: parsed,
+          premium: parsedPremium,
           frequency: editor.frequency,
-          quantity: 1,
+          quantity: parsedQuantity,
         });
       } else {
         rows[editor.rowIndex] = {
           ...rows[editor.rowIndex],
-          premium: parsed,
+          quantity: parsedQuantity,
+          premium: parsedPremium,
           frequency: editor.frequency,
         };
       }
@@ -686,6 +733,7 @@ const PlanEditor: Component = () => {
           productId: selected.productId,
           fullName: selected.fullName,
           shortName: selected.shortName,
+          shortNameManuallyEdited: false,
           attachedSuffix: selected.attachedSuffix,
           category: selected.category,
           type: selected.type,
@@ -774,16 +822,25 @@ const PlanEditor: Component = () => {
   const handleSaveProduct = () => {
     const product = editingProduct();
     if (!product || !isProductComplete(product)) return;
+    const normalizedShortNameState = buildShortNameState(
+      product,
+      String(product.shortName || "").trim(),
+    );
+    const normalizedProduct: DraftProduct = {
+      ...product,
+      ...normalizedShortNameState,
+    };
+    setEditingProduct(normalizedProduct);
 
     // Highlight the product card after returning to SubmitClosing
-    setPendingHighlightProductId(product.id);
+    setPendingHighlightProductId(normalizedProduct.id);
 
     updateSavedDraft((d) => {
       if (planData.index === null) {
-        return { ...d, products: [...d.products, product] };
+        return { ...d, products: [...d.products, normalizedProduct] };
       }
       const products = [...d.products];
-      products[planData.index] = product;
+      products[planData.index] = normalizedProduct;
       return { ...d, products };
     });
 
@@ -866,6 +923,7 @@ const PlanEditor: Component = () => {
                       onInput={(e) =>
                         handleProductShortNameChange(e.currentTarget.value)
                       }
+                      onBlur={handleProductShortNameBlur}
                       class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-slate-950 placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       placeholder="Short name"
                     />
@@ -1020,8 +1078,7 @@ const PlanEditor: Component = () => {
                           variant="danger"
                           class="rounded-lg bg-red-50/40"
                         >
-                          <CgDollar class="h-4 w-4" />
-                          Key in premium
+                          Key in Quantity & Premium
                         </Button>
                       }
                     >
@@ -1036,7 +1093,7 @@ const PlanEditor: Component = () => {
                               ? formatFrequencySummary(row.frequency)
                               : "Frequency";
                           const rowLabel = () =>
-                            `${premiumLabel()} / ${frequencyLabel()}`;
+                            `${Math.max(1, row.quantity || 1)} x ${premiumLabel()} / ${frequencyLabel()}`;
                           return (
                             <div class={`w-full max-w-sm ${row.id === removingRowId() ? "animate-row-remove" : ""}`}>
                               <div class={`flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm ${row.id === highlightedRowId() ? "animate-row-highlight" : ""}`}>
@@ -1048,10 +1105,6 @@ const PlanEditor: Component = () => {
                                   }`}
                                 >
                                   {rowLabel()}
-                                  <Show when={row.quantity > 1}>
-                                    {" "}
-                                    × {row.quantity}
-                                  </Show>
                                 </span>
                                 <div class="flex items-center gap-1.5">
                                   <IconButton
@@ -1064,18 +1117,6 @@ const PlanEditor: Component = () => {
                                     aria-label="Edit row"
                                   >
                                     <TbOutlinePencil />
-                                  </IconButton>
-                                  <IconButton
-                                    type="button"
-                                    onClick={() =>
-                                      handleDuplicateProductRow(rowIndex())
-                                    }
-                                    disabled={!row.premium || !row.frequency}
-                                    class="text-primary hover:bg-primary/10 hover:text-primary disabled:hover:bg-transparent disabled:hover:text-slate-500"
-                                    title="Duplicate row"
-                                    aria-label="Duplicate row"
-                                  >
-                                    <TbOutlinePlus />
                                   </IconButton>
                                   <IconButton
                                     type="button"
@@ -1094,6 +1135,13 @@ const PlanEditor: Component = () => {
                           );
                         }}
                       </For>
+                      <button
+                        type="button"
+                        onClick={() => openProductRowEditor()}
+                        class="text-base text-primary hover:text-primary/80"
+                      >
+                        + Add premium row
+                      </button>
                     </Show>
                   </div>
 
@@ -1252,8 +1300,7 @@ const PlanEditor: Component = () => {
                                           variant="danger"
                                           class="rounded-lg bg-red-50/40"
                                         >
-                                          <CgDollar class="h-4 w-4" />
-                                          Key in premium
+                                          Key in Quantity & Premium
                                         </Button>
                                       }
                                     >
@@ -1270,7 +1317,7 @@ const PlanEditor: Component = () => {
                                                 )
                                               : "Frequency";
                                           const rowLabel = () =>
-                                            `${premiumLabel()} / ${frequencyLabel()}`;
+                                            `${Math.max(1, row.quantity || 1)} x ${premiumLabel()} / ${frequencyLabel()}`;
                                           return (
                                             <div class={`w-full max-w-sm ${row.id === removingRowId() ? "animate-row-remove" : ""}`}>
                                               <div class={`flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm ${row.id === highlightedRowId() ? "animate-row-highlight" : ""}`}>
@@ -1283,12 +1330,6 @@ const PlanEditor: Component = () => {
                                                   }`}
                                                 >
                                                   {rowLabel()}
-                                                  <Show
-                                                    when={row.quantity > 1}
-                                                  >
-                                                    {" "}
-                                                    × {row.quantity}
-                                                  </Show>
                                                 </span>
                                                 <div class="flex items-center gap-1.5">
                                                   <IconButton
@@ -1304,24 +1345,6 @@ const PlanEditor: Component = () => {
                                                     aria-label="Edit row"
                                                   >
                                                     <TbOutlinePencil />
-                                                  </IconButton>
-                                                  <IconButton
-                                                    type="button"
-                                                    onClick={() =>
-                                                      handleDuplicateRiderRow(
-                                                        riderIndex(),
-                                                        rowIndex(),
-                                                      )
-                                                    }
-                                                    disabled={
-                                                      !row.premium ||
-                                                      !row.frequency
-                                                    }
-                                                    class="text-primary hover:bg-primary/10 hover:text-primary disabled:hover:bg-transparent disabled:hover:text-slate-500"
-                                                    title="Duplicate row"
-                                                    aria-label="Duplicate row"
-                                                  >
-                                                    <TbOutlinePlus />
                                                   </IconButton>
                                                   <IconButton
                                                     type="button"
@@ -1343,6 +1366,15 @@ const PlanEditor: Component = () => {
                                           );
                                         }}
                                       </For>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openRiderRowEditor(riderIndex())
+                                        }
+                                        class="text-base text-primary hover:text-primary/80"
+                                      >
+                                        + Add premium row
+                                      </button>
                                     </Show>
                                   </div>
                                 </div>
@@ -1408,15 +1440,24 @@ const PlanEditor: Component = () => {
           const allowedFrequencies =
             getAllowedFrequencies(optionsSource);
           const isLocked = allowedFrequencies.length === 1;
+          const quantityInvalid = () => {
+            const parsed = Number(editor().quantity);
+            return (
+              !editor().quantity.trim() ||
+              !Number.isFinite(parsed) ||
+              !Number.isInteger(parsed) ||
+              parsed <= 0
+            );
+          };
           const premiumInvalid = () =>
             !editor().premium.trim() ||
             !Number.isFinite(parseFloat(editor().premium)) ||
             parseFloat(editor().premium) <= 0;
           const frequencyInvalid = () => !editor().frequency;
           const rowSaveDisabled = () =>
-            !editor().premium.trim() ||
-            parseFloat(editor().premium) <= 0 ||
-            !editor().frequency;
+            quantityInvalid() ||
+            premiumInvalid() ||
+            frequencyInvalid();
           return (
             <EditModal
               title={
@@ -1432,6 +1473,34 @@ const PlanEditor: Component = () => {
               bodyClass="pb-6 pt-4"
             >
                 <div class="space-y-4">
+                  <div>
+                    <label class="mb-1 block text-base font-semibold uppercase text-slate-600">
+                      Quantity
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="1"
+                      step="1"
+                      autocomplete="off"
+                      value={editor().quantity}
+                      onInput={(e) =>
+                        setRowEditor((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                quantity: e.currentTarget.value,
+                              }
+                            : prev,
+                        )
+                      }
+                      class={`w-full rounded-md border bg-white px-3 py-2.5 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                        quantityInvalid()
+                          ? "border-red-300 bg-red-50/40 focus:ring-red-200"
+                          : "border-slate-300 focus:border-primary focus:ring-primary/20"
+                      }`}
+                    />
+                  </div>
                   <div>
                     <label class="mb-1 block text-base font-semibold uppercase text-slate-600">
                       Premium
@@ -1455,7 +1524,6 @@ const PlanEditor: Component = () => {
                               : prev,
                           )
                         }
-                        placeholder="Key in premium..."
                         class={`w-full rounded-md border bg-white py-2.5 pl-8 pr-3 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
                           premiumInvalid()
                             ? "border-red-300 bg-red-50/40 focus:ring-red-200"

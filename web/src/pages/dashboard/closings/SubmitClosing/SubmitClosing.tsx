@@ -32,6 +32,7 @@ import {
   getAnnualizedFYP,
   getFYC,
 } from "../../../../services/closingsService";
+import { productsService } from "../../../../services/productsService";
 import { authService } from "../../../../services/authService";
 import { teamService } from "../../../../services/teamService";
 import { sourcesService } from "../../../../services/sourcesService";
@@ -68,6 +69,7 @@ export type DraftProduct = {
   productId: string;
   fullName: string;
   shortName: string;
+  shortNameManuallyEdited?: boolean;
   attachedSuffix?: string;
   category?: string;
   type?: string;
@@ -263,6 +265,35 @@ export const calculateTotals = (draft: ClosingDraft) => {
   };
 };
 
+export const applyAttachedSuffixesFromCatalog = (
+  products: DraftProduct[],
+  suffixByRiderProductId: Record<string, string>,
+): DraftProduct[] => {
+  let changed = false;
+
+  const patched = products.map((product) => {
+    let ridersChanged = false;
+    const riders = product.riders.map((rider) => {
+      const existingSuffix = String(rider.attachedSuffix || "").trim();
+      if (existingSuffix) return rider;
+
+      const mappedSuffix = String(
+        suffixByRiderProductId[String(rider.productId || "").trim()] || "",
+      ).trim();
+      if (!mappedSuffix) return rider;
+
+      ridersChanged = true;
+      changed = true;
+      return { ...rider, attachedSuffix: mappedSuffix };
+    });
+
+    if (!ridersChanged) return product;
+    return { ...product, riders };
+  });
+
+  return changed ? patched : products;
+};
+
 // ============ Component ============
 
 const SubmitClosing: Component = () => {
@@ -421,6 +452,21 @@ const SubmitClosing: Component = () => {
   const [existingClosing] = createResource(editId, async (id) => {
     if (!id) return null;
     return closingsService.getClosingById(id);
+  });
+  const [productsCatalog] = createResource(editId, async (id) => {
+    if (!id) return null;
+    return productsService.getProducts();
+  });
+  const riderSuffixByProductId = createMemo<Record<string, string>>(() => {
+    const suffixes: Record<string, string> = {};
+    const riders = productsCatalog()?.riders || [];
+    for (const rider of riders) {
+      const riderId = String(rider.id || "").trim();
+      const suffix = String(rider.attachedSuffix || "").trim();
+      if (!riderId || !suffix) continue;
+      suffixes[riderId] = suffix;
+    }
+    return suffixes;
   });
   const previewTimestamp = createMemo(() => {
     if (editId()) {
@@ -672,6 +718,23 @@ const SubmitClosing: Component = () => {
         ),
       referrals: existing.referrals ?? null,
       referralsComment: existing.referralsComment || "",
+    });
+  });
+
+  // Existing closings don't persist rider attached suffix labels.
+  // Backfill from current product catalog so plan short names render correctly.
+  createEffect(() => {
+    if (!editId()) return;
+    const suffixByRiderId = riderSuffixByProductId();
+    if (Object.keys(suffixByRiderId).length === 0) return;
+
+    setDraft((current) => {
+      const nextProducts = applyAttachedSuffixesFromCatalog(
+        current.products,
+        suffixByRiderId,
+      );
+      if (nextProducts === current.products) return current;
+      return { ...current, products: nextProducts };
     });
   });
 
@@ -1242,12 +1305,16 @@ const SubmitClosing: Component = () => {
                                       (sum, row) => sum + (row.quantity || 1),
                                       0,
                                     );
+                                    const baseShortName =
+                                      item.shortName || item.fullName;
                                     return {
                                       quantity: totalQty,
-                                      shortName: appendAttachedSuffixesFromRiders(
-                                        item.shortName,
-                                        item.riders,
-                                      ),
+                                      shortName: item.shortNameManuallyEdited
+                                        ? baseShortName
+                                        : appendAttachedSuffixesFromRiders(
+                                            baseShortName,
+                                            item.riders,
+                                          ),
                                       fyc: calculateProductFYC(item),
                                     };
                                   }),

@@ -55,6 +55,7 @@ const {
   getUserFscCodeMock,
   getUserProfileMock,
   getSourcesMock,
+  getProductsMock,
   createClosingMock,
   updateClosingMock,
   getClosingByIdMock,
@@ -68,6 +69,7 @@ const {
   getUserFscCodeMock: vi.fn(),
   getUserProfileMock: vi.fn(),
   getSourcesMock: vi.fn(),
+  getProductsMock: vi.fn(),
   createClosingMock: vi.fn(),
   updateClosingMock: vi.fn(),
   getClosingByIdMock: vi.fn(),
@@ -149,6 +151,12 @@ vi.mock("../../../../services/teamService", () => ({
 vi.mock("../../../../services/sourcesService", () => ({
   sourcesService: {
     getSources: (...args: unknown[]) => getSourcesMock(...args),
+  },
+}));
+
+vi.mock("../../../../services/productsService", () => ({
+  productsService: {
+    getProducts: (...args: unknown[]) => getProductsMock(...args),
   },
 }));
 
@@ -267,7 +275,12 @@ vi.mock("./PlansSection", () => ({
   ),
 }));
 
-import SubmitClosing, { calculateTotals, type ClosingDraft } from "./SubmitClosing";
+import SubmitClosing, {
+  applyAttachedSuffixesFromCatalog,
+  calculateTotals,
+  type ClosingDraft,
+  type DraftProduct,
+} from "./SubmitClosing";
 
 describe("SubmitClosing", () => {
   beforeAll(() => {
@@ -289,6 +302,7 @@ describe("SubmitClosing", () => {
     getUserFscCodeMock.mockReset();
     getUserProfileMock.mockReset();
     getSourcesMock.mockReset();
+    getProductsMock.mockReset();
     createClosingMock.mockReset();
     updateClosingMock.mockReset();
     getClosingByIdMock.mockReset();
@@ -310,6 +324,7 @@ describe("SubmitClosing", () => {
         children: [],
       },
     ]);
+    getProductsMock.mockResolvedValue({ riders: [] });
     createClosingMock.mockResolvedValue("closing-1");
     updateClosingMock.mockResolvedValue(undefined);
     getClosingByIdMock.mockResolvedValue(null);
@@ -472,5 +487,53 @@ describe("SubmitClosing", () => {
 
     expect(selectedPeriod()).toBe("today");
     expect(filterMode()).toBe("all");
+  });
+
+  it("backfills rider attached suffix labels from catalog data", () => {
+    const products: DraftProduct[] = [
+      {
+        id: "plan-1",
+        isRider: false,
+        productId: "PLAN-1",
+        fullName: "Starter Plan",
+        shortName: "Starter",
+        fycRate: 10,
+        gst: false,
+        premiumRows: [],
+        riders: [
+          {
+            id: "rider-1",
+            isRider: true,
+            productId: "RIDER-1",
+            fullName: "Booster Rider",
+            shortName: "Booster",
+            fycRate: 5,
+            gst: false,
+            premiumRows: [],
+            riders: [],
+          },
+          {
+            id: "rider-2",
+            isRider: true,
+            productId: "RIDER-2",
+            fullName: "Shield Rider",
+            shortName: "Shield",
+            attachedSuffix: "[S]",
+            fycRate: 5,
+            gst: false,
+            premiumRows: [],
+            riders: [],
+          },
+        ],
+      },
+    ];
+
+    const patched = applyAttachedSuffixesFromCatalog(products, {
+      "RIDER-1": "[B]",
+      "RIDER-2": "[IGNORED]",
+    });
+
+    expect(patched[0].riders[0].attachedSuffix).toBe("[B]");
+    expect(patched[0].riders[1].attachedSuffix).toBe("[S]");
   });
 });

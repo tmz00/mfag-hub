@@ -175,11 +175,15 @@ const PlansSection: Component<Props> = (props) => {
           <For each={props.draft.products}>
             {(product, productIndex) => {
               const calcs = () => getBaseProductCalcs(product);
-              const productDisplayName = () =>
-                appendAttachedSuffixesFromRiders(
-                  product.shortName || product.fullName,
-                  product.riders,
-                );
+              const productDisplayName = () => {
+                const baseShortName = product.shortName || product.fullName;
+                return product.shortNameManuallyEdited
+                  ? baseShortName
+                  : appendAttachedSuffixesFromRiders(
+                      baseShortName,
+                      product.riders,
+                    );
+              };
               const hasValidPremium = () =>
                 product.premiumRows.every(
                   (row) => row.premium > 0 && Boolean(row.frequency),
