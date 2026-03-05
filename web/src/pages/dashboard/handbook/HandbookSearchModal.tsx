@@ -1,5 +1,14 @@
 import { A } from "@solidjs/router";
-import { Component, For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import {
+  Component,
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  untrack,
+} from "solid-js";
 import { TbOutlineArrowLeft } from "solid-icons/tb";
 import { IconButton, LoadingState } from "../../../components/ui";
 import { getHandbookEntries } from "../../../services/handbookContentService";
@@ -32,6 +41,7 @@ type Props = {
 const DASHBOARD_HANDBOOK_RECENT_SEARCHES_KEY =
   "dashboard_handbook_recent_searches";
 const MAX_RECENT_SEARCHES = 8;
+const MAX_AUTOFOCUS_ATTEMPTS = 8;
 
 const HandbookSearchModal: Component<Props> = (props) => {
   const isOpen = () => props.isOpen ?? true;
@@ -46,6 +56,9 @@ const HandbookSearchModal: Component<Props> = (props) => {
   const [recentSearches, setRecentSearches] = createSignal<string[]>([]);
   const [searchInputFocused, setSearchInputFocused] = createSignal(false);
   let searchInputRef: HTMLInputElement | undefined;
+  let autofocusRetryTimerId: number | undefined;
+  let closeInProgress = false;
+  let closeResetTimerId: number | undefined;
 
   const loadSearchIndex = async () => {
     if (searchLoaded() || searchLoading()) return;
@@ -330,11 +343,30 @@ const HandbookSearchModal: Component<Props> = (props) => {
     );
   };
 
+  const clearCloseResetTimer = () => {
+    if (closeResetTimerId !== undefined) {
+      window.clearTimeout(closeResetTimerId);
+      closeResetTimerId = undefined;
+    }
+  };
+
   const closeModal = () => {
+    if (closeInProgress) return;
+    closeInProgress = true;
+    clearCloseResetTimer();
+    closeResetTimerId = window.setTimeout(() => {
+      closeInProgress = false;
+      closeResetTimerId = undefined;
+    }, 600);
     addRecentSearch(searchTerm());
     setSearchTerm("");
     setSearchInputFocused(false);
     props.onClose();
+  };
+
+  const handleBackPressStart = (event: Event) => {
+    event.preventDefault();
+    closeModal();
   };
 
   const shouldShowRecentSearches = () =>
@@ -351,12 +383,63 @@ const HandbookSearchModal: Component<Props> = (props) => {
     );
   });
 
-  createEffect(() => {
+  const clearAutofocusTimers = () => {
+    if (autofocusRetryTimerId !== undefined) {
+      window.clearTimeout(autofocusRetryTimerId);
+      autofocusRetryTimerId = undefined;
+    }
+  };
+
+  const focusSearchInput = (attempt = 0) => {
     if (!isOpen()) return;
-    void loadSearchIndex();
+
+    const input = searchInputRef;
+    if (!input) {
+      if (attempt >= MAX_AUTOFOCUS_ATTEMPTS) return;
+      autofocusRetryTimerId = window.setTimeout(
+        () => focusSearchInput(attempt + 1),
+        120,
+      );
+      return;
+    }
+
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      input.focus();
+    }
+
+    const isFocused = document.activeElement === input;
+    if (isFocused) {
+      const valueLength = input.value.length;
+      if (valueLength > 0) {
+        input.setSelectionRange(valueLength, valueLength);
+      }
+      return;
+    }
+
+    if (attempt >= MAX_AUTOFOCUS_ATTEMPTS) {
+      return;
+    }
+
+    autofocusRetryTimerId = window.setTimeout(
+      () => focusSearchInput(attempt + 1),
+      120,
+    );
+  };
+
+  createEffect(() => {
+    if (!isOpen()) {
+      clearAutofocusTimers();
+      return;
+    }
+
+    clearCloseResetTimer();
+    closeInProgress = false;
+    void untrack(loadSearchIndex);
+    clearAutofocusTimers();
     queueMicrotask(() => {
-      searchInputRef?.focus();
-      searchInputRef?.select();
+      focusSearchInput();
     });
   });
 
@@ -395,6 +478,11 @@ const HandbookSearchModal: Component<Props> = (props) => {
     }
   });
 
+  onCleanup(() => {
+    clearAutofocusTimers();
+    clearCloseResetTimer();
+  });
+
   return (
     <Show when={isOpen()}>
         <div
@@ -410,6 +498,8 @@ const HandbookSearchModal: Component<Props> = (props) => {
                 <div class="col-start-1 row-start-1">
                   <IconButton
                     type="button"
+                    onPointerDown={handleBackPressStart}
+                    onTouchStart={handleBackPressStart}
                     onClick={closeModal}
                     size="lg"
                     aria-label="Back"
@@ -421,6 +511,7 @@ const HandbookSearchModal: Component<Props> = (props) => {
                   <input
                     type="search"
                     ref={searchInputRef}
+                    autofocus
                     value={searchTerm()}
                     onFocus={() => setSearchInputFocused(true)}
                     onBlur={() => {

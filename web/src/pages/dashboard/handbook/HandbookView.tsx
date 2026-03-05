@@ -65,6 +65,9 @@ const preserveTextLineBreaks = (html: string): string => {
   return container.innerHTML;
 };
 
+const MIN_CONTENT_BOTTOM_PADDING_PX = 32;
+const FINAL_SECTION_TOP_CUSHION_PX = 8;
+
 const HandbookView: Component = () => {
   const navigate = useNavigate();
   const params = useParams<{ categoryId: string }>();
@@ -84,6 +87,9 @@ const HandbookView: Component = () => {
   const [sectionMenuRoot, setSectionMenuRoot] =
     createSignal<HTMLDivElement | null>(null);
   const [stickyHeaderHeight, setStickyHeaderHeight] = createSignal(0);
+  const [contentBottomPaddingPx, setContentBottomPaddingPx] = createSignal(
+    MIN_CONTENT_BOTTOM_PADDING_PX,
+  );
   let appliedSearchJumpKey = "";
   let stickySentinelRef: HTMLDivElement | undefined;
   let stickyHeaderRef: HTMLDivElement | undefined;
@@ -300,6 +306,76 @@ const HandbookView: Component = () => {
     if (!showStickyHeader() || !hasSectionHeadings()) {
       setShowSectionMenu(false);
     }
+  });
+
+  createEffect(() => {
+    const el = contentEl();
+    const content = entry()?.content;
+    const sectionCount = sectionList().length;
+    void sectionCount;
+    if (!el || !content || typeof window === "undefined") {
+      setContentBottomPaddingPx(MIN_CONTENT_BOTTOM_PADDING_PX);
+      return;
+    }
+
+    let animationFrameId: number | undefined;
+
+    const measureBottomPadding = () => {
+      const headingNodes = getSectionHeadings();
+      const lastHeading = headingNodes[headingNodes.length - 1];
+      const contentHeight = Math.max(0, el.scrollHeight);
+
+      let finalSectionHeight = contentHeight;
+      if (lastHeading) {
+        const contentRect = el.getBoundingClientRect();
+        const headingRect = lastHeading.getBoundingClientRect();
+        const sectionTopOffset = Math.max(0, headingRect.top - contentRect.top);
+        finalSectionHeight = Math.max(0, contentHeight - sectionTopOffset);
+      }
+
+      const viewportHeight = Math.max(0, window.innerHeight || 0);
+      const stickyOffset = Math.max(
+        0,
+        stickyHeaderRef?.offsetHeight || 0,
+      );
+      const neededPadding =
+        viewportHeight + stickyOffset - finalSectionHeight + FINAL_SECTION_TOP_CUSHION_PX;
+      setContentBottomPaddingPx(
+        Math.max(MIN_CONTENT_BOTTOM_PADDING_PX, Math.ceil(neededPadding)),
+      );
+    };
+
+    const scheduleMeasure = () => {
+      if (animationFrameId !== undefined) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = undefined;
+        measureBottomPadding();
+      });
+    };
+
+    scheduleMeasure();
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => scheduleMeasure())
+        : null;
+    resizeObserver?.observe(el);
+    const lastHeading = getSectionHeadings().at(-1);
+    if (lastHeading) {
+      resizeObserver?.observe(lastHeading);
+    }
+
+    window.addEventListener("resize", scheduleMeasure);
+
+    onCleanup(() => {
+      window.removeEventListener("resize", scheduleMeasure);
+      if (animationFrameId !== undefined) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+      resizeObserver?.disconnect();
+    });
   });
 
   // Wrap answer content inside <details> in a wrapper div for consistent border-left styling
@@ -1108,7 +1184,10 @@ const HandbookView: Component = () => {
             </div>
           </div>
 
-          <div class="mx-auto max-w-7xl px-4 pb-[60vh]">
+          <div
+            class="mx-auto max-w-7xl px-4"
+            style={{ "padding-bottom": `${contentBottomPaddingPx()}px` }}
+          >
             <div ref={stickySentinelRef} class="h-px w-full" />
             <div class="sticky top-0 z-20 h-0">
               <Show when={hasSectionHeadings()}>

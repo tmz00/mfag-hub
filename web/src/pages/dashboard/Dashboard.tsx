@@ -36,6 +36,17 @@ type HandbookCategory = {
 
 let dashboardScrollY = 0;
 let hasDashboardScrollY = false;
+const preloadHandbookSearch = () => {
+  void import("./handbook/HandbookSearch");
+};
+const getHandbookSearchHref = () => {
+  if (typeof window === "undefined") {
+    return "/handbook/search?returnTo=%2F";
+  }
+
+  const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}` || "/";
+  return `/handbook/search?returnTo=${encodeURIComponent(returnTo)}`;
+};
 
 const Dashboard: Component = () => {
   const navigate = useNavigate();
@@ -59,6 +70,7 @@ const Dashboard: Component = () => {
       setPendingRestoreScrollY(dashboardScrollY);
     }
 
+    preloadHandbookSearch();
     loadHandbookCategories();
     let unsubNotifications: (() => void) | null = null;
 
@@ -320,7 +332,11 @@ const Dashboard: Component = () => {
                     <div class="relative w-full">
                       <button
                         type="button"
-                        onClick={() => navigate("/handbook/search")}
+                        onPointerDown={preloadHandbookSearch}
+                        onTouchStart={preloadHandbookSearch}
+                        onMouseEnter={preloadHandbookSearch}
+                        onFocus={preloadHandbookSearch}
+                        onClick={() => navigate(getHandbookSearchHref())}
                         class="flex w-full items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-base text-gray-500 shadow-inner transition hover:bg-white focus:outline-none focus:ring-1 focus:ring-primary/40"
                       >
                         <span>Search handbook…</span>

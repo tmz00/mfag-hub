@@ -193,7 +193,7 @@ describe("Dashboard page", () => {
     });
     fireEvent.click(searchButton);
 
-    expect(navigateMock).toHaveBeenCalledWith("/handbook/search");
+    expect(navigateMock).toHaveBeenCalledWith("/handbook/search?returnTo=%2F");
   });
 
   it("shows unread badge and unsubscribes from listeners on unmount", async () => {

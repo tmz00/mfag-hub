@@ -131,6 +131,40 @@ describe("HandbookSearchModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("autofocuses the search input when opened", async () => {
+    await renderModal();
+
+    const searchInput = await screen.findByRole("searchbox");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(searchInput);
+    });
+  });
+
+  it("closes from back button while search input is focused", async () => {
+    const { onClose } = await renderModal();
+
+    const searchInput = await screen.findByRole("searchbox");
+    fireEvent.focus(searchInput);
+
+    const backButton = await screen.findByRole("button", { name: /back/i });
+    fireEvent.click(backButton);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not double-close when back press triggers both pointer and click", async () => {
+    const { onClose } = await renderModal();
+
+    const searchInput = await screen.findByRole("searchbox");
+    fireEvent.focus(searchInput);
+
+    const backButton = await screen.findByRole("button", { name: /back/i });
+    fireEvent.pointerDown(backButton);
+    fireEvent.click(backButton);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("hides recent searches until at least one character is typed", async () => {
     localStorage.setItem(
       "dashboard_handbook_recent_searches",

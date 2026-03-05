@@ -5,22 +5,33 @@ import HandbookSearchModal from "./HandbookSearchModal";
 const HandbookSearch: Component = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const readSearchParam = (key: string): string => {
+    if (typeof window !== "undefined") {
+      const direct = new URLSearchParams(window.location.search).get(key);
+      if (typeof direct === "string") {
+        return direct.trim();
+      }
+    }
+
+    const value = (searchParams as Record<string, unknown>)[key];
+    if (Array.isArray(value)) {
+      return String(value[0] || "").trim();
+    }
+
+    return String(value || "").trim();
+  };
   const initialCategory = () =>
-    (Array.isArray(searchParams.category)
-      ? searchParams.category[0]
-      : searchParams.category || ""
-    ).trim();
+    readSearchParam("category");
   const replaceResultNavigation = () => {
-    const value = Array.isArray(searchParams.replace)
-      ? searchParams.replace[0]
-      : searchParams.replace || "";
-    return value === "1";
+    return readSearchParam("replace") === "1";
   };
   const returnTo = () => {
-    const value = Array.isArray(searchParams.returnTo)
-      ? searchParams.returnTo[0]
-      : searchParams.returnTo || "";
-    return value.startsWith("/") ? value : "";
+    const value = readSearchParam("returnTo");
+    if (!value.startsWith("/") || value.startsWith("//")) {
+      return "";
+    }
+
+    return value;
   };
 
   const handleClose = () => {

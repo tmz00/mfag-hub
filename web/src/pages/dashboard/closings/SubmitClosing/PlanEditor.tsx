@@ -1138,7 +1138,7 @@ const PlanEditor: Component = () => {
                       <button
                         type="button"
                         onClick={() => openProductRowEditor()}
-                        class="text-base text-primary hover:text-primary/80"
+                        class="cursor-pointer text-base text-primary hover:text-primary/80"
                       >
                         + Add premium row
                       </button>
@@ -1371,7 +1371,7 @@ const PlanEditor: Component = () => {
                                         onClick={() =>
                                           openRiderRowEditor(riderIndex())
                                         }
-                                        class="text-base text-primary hover:text-primary/80"
+                                        class="cursor-pointer text-base text-primary hover:text-primary/80"
                                       >
                                         + Add premium row
                                       </button>
