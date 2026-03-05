@@ -125,7 +125,14 @@ describe("authService", () => {
     const mod = await loadAuthModule();
     localStorage.setItem(mod.TOKEN_KEY, "old-token");
 
-    vi.spyOn(mod.authService, "ensureSession").mockResolvedValue(false);
+    vi.spyOn(mod.authService, "ensureSession").mockImplementation(
+      async (forceRefresh?: boolean) => {
+        if (forceRefresh) {
+          localStorage.removeItem(mod.TOKEN_KEY);
+        }
+        return false;
+      },
+    );
     const signOutSpy = vi
       .spyOn(mod.authService, "forceSignOutLocal")
       .mockImplementation(() => {});
@@ -134,6 +141,44 @@ describe("authService", () => {
 
     expect(response.status).toBe(401);
     expect(signOutSpy).toHaveBeenCalledWith("/");
+  });
+
+  it("does not force sign-out after 401 when refresh fails but token still exists", async () => {
+    const fetchMock = vi.mocked(vi.fn()).mockResolvedValue(
+      new Response(JSON.stringify({ message: "Unauthenticated." }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.TOKEN_KEY, "old-token");
+
+    vi.spyOn(mod.authService, "ensureSession").mockResolvedValue(false);
+    const signOutSpy = vi
+      .spyOn(mod.authService, "forceSignOutLocal")
+      .mockImplementation(() => {});
+
+    const response = await mod.authFetch("/api/team", { method: "GET" });
+
+    expect(response.status).toBe(401);
+    expect(signOutSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps local auth tokens when refresh request fails due network", async () => {
+    localStorage.setItem("authToken", "old-token");
+    localStorage.setItem("refreshToken", "refresh-token");
+
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    const ok = await mod.authService.ensureSession(true);
+
+    expect(ok).toBe(false);
+    expect(localStorage.getItem(mod.TOKEN_KEY)).toBe("old-token");
+    expect(localStorage.getItem(mod.REFRESH_TOKEN_KEY)).toBe("refresh-token");
   });
 
   it("uses backend validation message in authJson errors", async () => {

@@ -48,6 +48,7 @@ import {
   consumePendingHighlightProductId,
   consumePendingScrollToAddNewBusiness,
 } from "./_submitStore";
+import { appendAttachedSuffixesFromRiders } from "../../../../utils/attachedSuffix";
 const PlansSection = lazy(() => import("./PlansSection"));
 const _FscPicker = lazy(() => import("./_FscPicker"));
 const SourcePicker = lazy(() => import("./SourcePicker"));
@@ -67,6 +68,7 @@ export type DraftProduct = {
   productId: string;
   fullName: string;
   shortName: string;
+  attachedSuffix?: string;
   category?: string;
   type?: string;
   notes?: string;
@@ -1242,7 +1244,10 @@ const SubmitClosing: Component = () => {
                                     );
                                     return {
                                       quantity: totalQty,
-                                      shortName: item.shortName,
+                                      shortName: appendAttachedSuffixesFromRiders(
+                                        item.shortName,
+                                        item.riders,
+                                      ),
                                       fyc: calculateProductFYC(item),
                                     };
                                   }),

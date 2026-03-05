@@ -210,7 +210,9 @@ class ApiAuthService implements AuthService {
         }
 
         if (!response.ok || !payload?.token) {
-          this.clearAuth();
+          if (isRefreshAuthFailure(response.status)) {
+            this.clearAuth();
+          }
           return false;
         }
 
@@ -218,7 +220,6 @@ class ApiAuthService implements AuthService {
         this.saveAuth(payload.token, user, payload.refreshToken);
         return true;
       } catch {
-        this.clearAuth();
         return false;
       } finally {
         this.refreshPromise = null;
@@ -276,7 +277,9 @@ class ApiAuthService implements AuthService {
         if (refreshed) {
           return this.requestJson<T>(path, init, requiresAuth, true);
         }
-        this.forceSignOutLocal("/");
+        if (!this.token) {
+          this.forceSignOutLocal("/");
+        }
       } else if (response.status === 401) {
         this.forceSignOutLocal("/");
       }
@@ -321,7 +324,13 @@ class ApiAuthService implements AuthService {
       this.currentUser = mapped;
       localStorage.setItem(USER_KEY, JSON.stringify(mapped));
       this.notify();
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        isLikelyConnectivityErrorMessage(error.message)
+      ) {
+        return;
+      }
       this.clearAuth();
     }
   }
@@ -521,7 +530,7 @@ export async function authFetch(
     if (refreshed) {
       return authFetch(path, init, true, options);
     }
-    if (!options.suppressUnauthorizedSignOut) {
+    if (!options.suppressUnauthorizedSignOut && !getAuthToken()) {
       authService.forceSignOutLocal("/");
     }
   } else if (response.status === 401) {
@@ -566,6 +575,21 @@ export async function authJson<T>(
   }
 
   return payload as T;
+}
+
+function isRefreshAuthFailure(status: number): boolean {
+  return status === 401 || status === 403 || status === 422;
+}
+
+function isLikelyConnectivityErrorMessage(message: string): boolean {
+  const normalized = String(message || "").toLowerCase();
+  return (
+    normalized.includes("unable to reach server") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("networkerror") ||
+    normalized.includes("network request failed") ||
+    normalized.includes("load failed")
+  );
 }
 
 function firstValidationMessage(errors: unknown): string | null {

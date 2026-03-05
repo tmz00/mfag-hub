@@ -8,9 +8,10 @@ import {
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 
-import { Alert, Spinner } from "../../components/ui";
+import { Alert, Button, Spinner } from "../../components/ui";
 import { email as validateEmail } from "../../utils/validators";
 import { authService, validateFscCode } from "../../services/authService";
+import { resetCurrentOriginSiteData } from "../../utils/resetSiteData";
 import packageJson from "../../../package.json";
 import {
   _AuthContainer,
@@ -37,6 +38,7 @@ const Login: Component = () => {
   const [status, setStatus] = createSignal("");
   const [error, setError] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
+  const [isResetting, setIsResetting] = createSignal(false);
   const [otpSent, setOtpSent] = createSignal(false);
 
   onMount(() => {
@@ -109,6 +111,33 @@ const Login: Component = () => {
     if (!emailTouched() || !fscTouched()) return false;
     return !validateEmail(email()) && !validateFscCode(fscCode());
   });
+
+  const canShowResetButton = createMemo(() => {
+    const message = String(error() || "").toLowerCase();
+    return (
+      message.includes("failed to fetch") ||
+      message.includes("unable to reach server") ||
+      message.includes("network")
+    );
+  });
+
+  const handleResetAppData = async () => {
+    if (isResetting()) return;
+
+    setIsResetting(true);
+    setError("");
+    setStatus("Resetting local app data...");
+
+    try {
+      await resetCurrentOriginSiteData();
+      setStatus("App data reset. Reloading...");
+      window.location.replace("/login");
+    } catch {
+      window.location.reload();
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   return (
     <_AuthContainer>
@@ -187,6 +216,26 @@ const Login: Component = () => {
             <Show when={error()}>
               <div class="pt-3">
                 <Alert type="error">{error()}</Alert>
+                <Show when={canShowResetButton()}>
+                  <div class="mt-3 space-y-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      class="!w-full !rounded-lg"
+                      disabled={isLoading() || isResetting()}
+                      onClick={() => void handleResetAppData()}
+                    >
+                      {isResetting()
+                        ? "Resetting app data..."
+                        : "Reset app data and reload"}
+                    </Button>
+                    <p class="text-center text-xs text-gray-500">
+                      If this still fails, clear site data for hub.mfag.sg and
+                      hubapi.mfag.sg in browser settings.
+                    </p>
+                  </div>
+                </Show>
               </div>{" "}
             </Show>
 

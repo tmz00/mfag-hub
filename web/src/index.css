@@ -103,6 +103,16 @@ input[type="range"].compound-range::-moz-range-track {
   border-radius: 999px;
 }
 
+.handbook-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  cursor: pointer;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23006a6b' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4 4 12'/%3E%3C/svg%3E")
+    no-repeat center / 0.9rem 0.9rem;
+}
+
 select {
   -webkit-appearance: none;
   appearance: none;
@@ -173,30 +183,25 @@ select {
 }
 
 /* Header picker dropdown preview styles */
-.handbook-editor .ql-header .ql-picker-item[data-value="1"] {
+.handbook-editor .ql-header .ql-picker-item[data-value="1"],
+.handbook-editor .ql-header .ql-picker-item[data-value="2"] {
   padding: 0.35rem 0.5rem !important;
   margin-bottom: 0.25rem;
   border-bottom: 2px solid var(--color-primary-200);
 }
 
-.handbook-editor .ql-header .ql-picker-item[data-value="1"]::before {
+.handbook-editor .ql-header .ql-picker-item[data-value="1"]::before,
+.handbook-editor .ql-header .ql-picker-item[data-value="2"]::before {
   font-size: 1.25rem !important;
   font-weight: 700;
   color: var(--color-primary-800);
 }
 
-.handbook-editor .ql-header .ql-picker-item[data-value="2"] {
-  padding: 0.35rem 0.5rem !important;
-  margin-bottom: 0.25rem;
-  background: var(--color-primary-50);
-  border: 1px solid var(--color-primary-200);
-  border-radius: 0.375rem;
-}
-
-.handbook-editor .ql-header .ql-picker-item[data-value="2"]::before {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--color-primary-700);
+.handbook-editor
+  .ql-toolbar.ql-snow
+  .ql-picker.ql-header
+  .ql-picker-item[data-value="2"]::before {
+  content: "Heading";
 }
 
 .handbook-editor .ql-header .ql-picker-item[data-value="3"] {
@@ -222,14 +227,17 @@ select {
 }
 
 /* Also style the selected label in the toolbar */
-.handbook-editor .ql-header .ql-picker-label[data-value="1"]::before {
+.handbook-editor .ql-header .ql-picker-label[data-value="1"]::before,
+.handbook-editor .ql-header .ql-picker-label[data-value="2"]::before {
   color: var(--color-primary-800);
   font-weight: 700;
 }
 
-.handbook-editor .ql-header .ql-picker-label[data-value="2"]::before {
-  color: var(--color-primary-700);
-  font-weight: 700;
+.handbook-editor
+  .ql-toolbar.ql-snow
+  .ql-picker.ql-header
+  .ql-picker-label[data-value="2"]::before {
+  content: "Heading";
 }
 
 .handbook-editor .ql-header .ql-picker-label[data-value="3"]::before {
@@ -253,7 +261,7 @@ select {
     .handbook-content,
     .faq-answer-editor .ql-editor
   )
-  h1 {
+  h2 {
   font-size: 1.25rem !important;
   font-weight: 700;
   color: var(--color-primary-800);
@@ -269,6 +277,11 @@ select {
   )
   p {
   margin-bottom: 0.5rem;
+}
+
+.handbook-editor .ql-editor > p:first-child,
+.handbook-content > p:first-child {
+  padding-top: 1.5rem;
 }
 
 :is(
@@ -289,6 +302,27 @@ select {
   )
   a:hover {
   color: var(--color-primary-700);
+}
+
+/* YouTube icon before YouTube links (editor + reader) */
+:is(.handbook-editor .ql-editor, .handbook-content)
+  a[href*="youtube.com/watch" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content)
+  a[href*="youtube.com/shorts/" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content)
+  a[href*="youtube.com/live/" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content)
+  a[href*="youtube-nocookie.com" i]::before,
+:is(.handbook-editor .ql-editor, .handbook-content)
+  a[href*="youtu.be/" i]::before {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  margin-right: 0.3rem;
+  vertical-align: text-bottom;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='5' width='20' height='14' rx='4' fill='%23FF0000'/%3E%3Cpath d='M10 9l6 3-6 3z' fill='white'/%3E%3C/svg%3E")
+    no-repeat center / contain;
 }
 
 /* PDF icon before PDF links (editor + reader) */
@@ -315,7 +349,8 @@ select {
   height: 1.2em;
   margin-right: 0.3rem;
   vertical-align: text-bottom;
-  background: url("/images/handbook-image.png") no-repeat center / contain;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2315803d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='14' rx='2.5'/%3E%3Ccircle cx='9' cy='10' r='1.5'/%3E%3Cpath d='M20.5 15 16 10.5 10.5 16 8.5 14 5 17.5'/%3E%3C/svg%3E")
+    no-repeat center / contain;
 }
 
 /* Video icon before video links (editor + reader) */
@@ -325,11 +360,14 @@ select {
 :is(.handbook-editor .ql-editor, .handbook-content) a[href*=".m4v" i]::before,
 :is(.handbook-editor .ql-editor, .handbook-content) a[href*=".avi" i]::before,
 :is(.handbook-editor .ql-editor, .handbook-content) a[href*=".mkv" i]::before {
-  content: "🎥";
+  content: "";
   display: inline-block;
   width: 1.2em;
+  height: 1.2em;
   margin-right: 0.3rem;
   vertical-align: text-bottom;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='6.5' width='12' height='11' rx='2.5'/%3E%3Cpath d='m15.5 10 5-2.5v9l-5-2.5'/%3E%3C/svg%3E")
+    no-repeat center / contain;
 }
 
 :is(
@@ -344,7 +382,7 @@ select {
     .faq-answer-editor .ql-editor
   )
   b {
-  font-weight: 600;
+  font-weight: 700;
   color: #1f2937;
 }
 
@@ -386,6 +424,29 @@ select {
     .handbook-content,
     .faq-answer-editor .ql-editor
   )
+  blockquote
+  + blockquote {
+  margin-top: calc(-0.75rem);
+  border-radius: 0;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
+  blockquote:has(
+    + blockquote
+  ) {
+  border-radius: 0 0.5rem 0 0;
+  margin-bottom: 0;
+}
+
+:is(
+    .handbook-editor .ql-editor,
+    .handbook-content,
+    .faq-answer-editor .ql-editor
+  )
   ul,
 :is(
     .handbook-editor .ql-editor,
@@ -413,6 +474,18 @@ select {
   )
   ol {
   list-style-type: decimal;
+}
+
+/* Quill 2 uses <ol> for both bullet and ordered lists (via data-list attribute).
+   Fix bullet items in the viewer which has no Quill rendering. */
+.handbook-content li[data-list="bullet"] {
+  list-style-type: disc;
+}
+
+/* Quill 2 editors: Quill adds padding-left:1.5em on <li> itself, so remove it
+   from <ol> to avoid double-indenting relative to the viewer. */
+:is(.handbook-editor .ql-editor, .faq-answer-editor .ql-editor) ol {
+  padding-left: 0;
 }
 
 :is(
@@ -536,6 +609,11 @@ select {
   cursor: pointer;
   list-style: none;
   line-height: 1.35;
+}
+
+.ql-details-block .ql-details-summary,
+.ql-details-block .ql-details-content {
+  white-space: normal;
 }
 
 :is(.handbook-content summary, .ql-details-block .ql-details-summary)::before {
@@ -794,45 +872,32 @@ select {
   pointer-events: none;
 }
 
-/* Compact empty paragraphs in editors only. */
-:is(
-    .handbook-editor .ql-editor,
-    .faq-answer-editor .ql-editor
-  )
+/* Show visible blank lines in editors. */
+:is(.handbook-editor .ql-editor, .faq-answer-editor .ql-editor)
   p:has(> br:only-child),
-:is(
-    .handbook-editor .ql-editor,
-    .faq-answer-editor .ql-editor
-  )
-  p:empty {
-  min-height: 0.75rem !important;
-  height: 0.75rem !important;
-  margin: 0.25rem 0 !important;
+:is(.handbook-editor .ql-editor, .faq-answer-editor .ql-editor) p:empty {
+  min-height: 1.625rem !important;
+  height: 1.625rem !important;
+  margin: 0.5rem 0 !important;
   padding: 0 !important;
 }
 
 /* Fallback for browsers without :has() support */
-:is(
-    .handbook-editor .ql-editor,
-    .faq-answer-editor .ql-editor
-  )
+:is(.handbook-editor .ql-editor, .faq-answer-editor .ql-editor)
   p
   > br:only-child {
   display: block;
-  height: 0.75rem;
-  line-height: 0.75rem;
+  height: 1.625rem;
+  line-height: 1.625rem;
   content: "";
 }
 
 /* Explicit height for truly empty paragraphs */
-:is(
-    .handbook-editor .ql-editor,
-    .faq-answer-editor .ql-editor
-  )
+:is(.handbook-editor .ql-editor, .faq-answer-editor .ql-editor)
   p:empty::before {
   content: "\00a0";
   display: block;
-  height: 0.75rem;
+  height: 1.625rem;
 }
 
 /* Preserve visible blank lines in handbook reader. */
@@ -972,9 +1037,15 @@ select {
 
 /* Premium row feedback animations */
 @keyframes row-highlight {
-  0% { box-shadow: 0 0 0 2.5px #10b981; }
-  60% { box-shadow: 0 0 0 2.5px rgba(16, 185, 129, 0.3); }
-  100% { box-shadow: 0 0 0 0 transparent; }
+  0% {
+    box-shadow: 0 0 0 2.5px #10b981;
+  }
+  60% {
+    box-shadow: 0 0 0 2.5px rgba(16, 185, 129, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 .animate-row-highlight {
@@ -982,7 +1053,10 @@ select {
 }
 
 @keyframes row-remove {
-  to { opacity: 0; transform: translateX(-16px) scale(0.97); }
+  to {
+    opacity: 0;
+    transform: translateX(-16px) scale(0.97);
+  }
 }
 
 .animate-row-remove {

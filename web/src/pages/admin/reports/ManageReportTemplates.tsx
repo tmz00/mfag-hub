@@ -80,6 +80,11 @@ const defaultMinValuePlaceholder =
     : "";
 const previewNames = ["Ahmad Rahman", "Nur Aisyah", "Siti Hajar"];
 
+const parseTitleLinesInput = (value: string): string[] => value.split("\n");
+
+const normalizeTitleLines = (titleLines: string[] | undefined): string[] =>
+  (titleLines || []).map((line) => line.trim());
+
 const formatPreviewDate = (value: Date): string =>
   value.toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -883,16 +888,20 @@ const ManageReports: Component = () => {
   const saveDraftTable = () => {
     const table = draftTable();
     if (!table || tableValidationErrors().length > 0) return;
+    const normalizedTable = {
+      ...table,
+      titleLines: normalizeTitleLines(table.titleLines),
+    };
 
     setDraftReport((prev) => {
       if (!prev) return prev;
       if (!isEditingTable()) {
-        return { ...prev, tables: [...prev.tables, table] };
+        return { ...prev, tables: [...prev.tables, normalizedTable] };
       }
       return {
         ...prev,
         tables: prev.tables.map((item) =>
-          item.id === editingTableId() ? table : item,
+          item.id === editingTableId() ? normalizedTable : item,
         ),
       };
     });
@@ -1283,7 +1292,7 @@ const ManageReports: Component = () => {
                 />
               </label>
               <label class="text-sm font-semibold text-gray-700">
-                Table Gap (px)
+                {draft().singleTable ? "Column Group Gap (px)" : "Table Gap (px)"}
                 <input
                   type="number"
                   value={draft().tableGap}
@@ -1495,17 +1504,14 @@ const ManageReports: Component = () => {
                   placeholder={defaultTitleLinesPlaceholderText || undefined}
                   onInput={(e) =>
                     updateTableDraft({
-                      titleLines: e.currentTarget.value
-                        .split("\n")
-                        .map((line) => line.trim())
-                        .filter((line) => line.length > 0),
+                      titleLines: parseTitleLinesInput(e.currentTarget.value),
                     })
                   }
                   class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base placeholder:italic"
                 />
               </label>
               <label class="text-base font-semibold text-gray-700">
-                Value Label
+                {draftReport()?.singleTable ? "Header" : "Value Label"}
                 <input
                   value={table().valueLabel}
                   placeholder={defaultValueLabelPlaceholder || undefined}

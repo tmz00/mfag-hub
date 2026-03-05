@@ -27,21 +27,24 @@ export const HandbookEditPickerModal: Component<Props> = (props) => {
           <For each={props.entries}>
             {(entry, index) => (
               <div class="group relative flex h-36 flex-col overflow-hidden rounded-xl border border-gray-100 bg-gray-900 text-white shadow-sm">
-                <div class="absolute inset-0 overflow-hidden bg-linear-to-br from-primary-950 via-primary-800 to-secondary-700">
-                  <div class="absolute -left-6 top-3 h-20 w-20 rounded-full bg-secondary-300/20 blur-2xl" />
-                  <div class="absolute -right-5 top-1/4 h-24 w-24 rounded-full bg-white/12 blur-2xl" />
-                  <div class="absolute -bottom-7 left-1/3 h-28 w-28 rounded-full bg-secondary-200/12 blur-2xl" />
-                </div>
                 <Show when={entry.imageUrl}>
                   {(url) => (
                     <AuthenticatedImage
                       src={url()}
                       alt={entry.category || "Handbook category image"}
-                      class="absolute inset-0 h-full w-full object-cover opacity-80"
+                      class="absolute inset-0 h-full w-full object-cover"
                       loading="lazy"
                     />
                   )}
                 </Show>
+                <div
+                  class="absolute inset-0 overflow-hidden bg-linear-to-br from-primary-950 via-primary-800 to-secondary-700"
+                  classList={{ "opacity-45": !!entry.imageUrl }}
+                >
+                  <div class="absolute -left-6 top-3 h-20 w-20 rounded-full bg-secondary-300/20 blur-2xl" />
+                  <div class="absolute -right-5 top-1/4 h-24 w-24 rounded-full bg-white/12 blur-2xl" />
+                  <div class="absolute -bottom-7 left-1/3 h-28 w-28 rounded-full bg-secondary-200/12 blur-2xl" />
+                </div>
                 <div class="absolute inset-0 bg-primary/40 mix-blend-multiply" />
                 <div class="absolute inset-0 bg-linear-to-t from-black/50 via-black/10 to-transparent" />
                 <div class="absolute right-2 top-2 z-10 flex items-center gap-2">

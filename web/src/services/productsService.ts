@@ -21,6 +21,7 @@ export type Rider = {
   category?: string;
   fullName?: string;
   shortName?: string;
+  attachedSuffix?: string;
   type?: string;
   notes?: string;
   optionTitle?: string;

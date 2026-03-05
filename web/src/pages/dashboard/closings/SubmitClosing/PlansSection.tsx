@@ -31,6 +31,7 @@ import {
   generateId,
   isAddonProduct,
 } from "./_planUtils";
+import { appendAttachedSuffixesFromRiders } from "../../../../utils/attachedSuffix";
 
 type Props = {
   draft: ClosingDraft;
@@ -61,6 +62,7 @@ const PlansSection: Component<Props> = (props) => {
       productId: selected.productId,
       fullName: selected.fullName,
       shortName: selected.shortName,
+      attachedSuffix: selected.attachedSuffix,
       category: selected.category,
       type: selected.type,
       notes: selected.notes,
@@ -118,8 +120,8 @@ const PlansSection: Component<Props> = (props) => {
     }
   };
 
-  // Calculate FYP and FYC for display (includes quantity multiplier)
-  const getProductCalcs = (product: DraftProduct) => {
+  // Calculate base plan FYP/FYC for display (includes quantity multiplier)
+  const getBaseProductCalcs = (product: DraftProduct) => {
     const gstPercent = product.gst ? 9 : 0;
     const isSingle = product.type?.toLowerCase() === "single";
     const fypMultiplier = isSingle ? 0.1 : 1;
@@ -138,28 +140,7 @@ const PlansSection: Component<Props> = (props) => {
         quantity;
     }
 
-    let riderFyp = 0;
-    let riderFyc = 0;
-    for (const rider of product.riders) {
-      const riderGst = rider.gst ? 9 : 0;
-      const effectiveRate =
-        rider.fycRate === -1 ? product.fycRate : rider.fycRate;
-      for (const row of rider.premiumRows) {
-        if (!row.frequency) continue;
-        const quantity = row.quantity || 1;
-        riderFyp +=
-          getAnnualizedFYP(row.premium, row.frequency, riderGst) *
-          quantity *
-          fypMultiplier;
-        riderFyc +=
-          getFYC(row.premium, row.frequency, effectiveRate, riderGst) *
-          quantity;
-      }
-    }
-
-    const fyp = baseFyp + riderFyp;
-    const fyc = baseFyc + riderFyc;
-    return { fyp, fyc };
+    return { fyp: baseFyp, fyc: baseFyc };
   };
 
   const getRiderCalcs = (
@@ -193,7 +174,12 @@ const PlansSection: Component<Props> = (props) => {
         <div class="space-y-3">
           <For each={props.draft.products}>
             {(product, productIndex) => {
-              const calcs = () => getProductCalcs(product);
+              const calcs = () => getBaseProductCalcs(product);
+              const productDisplayName = () =>
+                appendAttachedSuffixesFromRiders(
+                  product.shortName || product.fullName,
+                  product.riders,
+                );
               const hasValidPremium = () =>
                 product.premiumRows.every(
                   (row) => row.premium > 0 && Boolean(row.frequency),
@@ -207,7 +193,7 @@ const PlansSection: Component<Props> = (props) => {
                     <div class="min-w-0">
                       <div>
                         <span class="text-base font-semibold text-gray-950">
-                          {product.shortName || product.fullName}
+                          {productDisplayName()}
                         </span>
                         <div class="mt-1 flex flex-wrap items-center gap-1.5">
                           <span class="rounded bg-primary/10 px-1.5 py-0.5 text-base font-medium text-primary">

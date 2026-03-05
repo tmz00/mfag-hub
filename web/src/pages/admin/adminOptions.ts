@@ -122,7 +122,7 @@ export const manageProductsActionOptions: AdminActionOption[] = [
     action: "addBasePlan",
     title: "Add Base Plan",
     description:
-      "Create a new base plan with FYC rules, frequencies, and attachable riders / top-up items. Riders / top-up items must be created first (using option above) before they can be attached.",
+      "Create a new base plan with FYC rules, frequencies, and attachable riders / top-up items. Riders / top-up items must be created first (using option below) before they can be attached.",
     icon: TbOutlinePlus,
   },
   {

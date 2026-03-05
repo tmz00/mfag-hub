@@ -146,22 +146,12 @@ const RouteTransitionRoot: Component<RouteSectionProps> = (props) => {
 };
 
 const HomeRedirect: Component<{ authed: () => boolean }> = (props) => {
-  const navigate = useNavigate();
-
-  onMount(() => {
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (navigator as any).standalone;
-    const isMobile = isMobileDevice();
-
-    if (!props.authed() && (!isMobile || isStandalone)) {
-      navigate("/login", { replace: true });
-    }
-  });
-
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
-      <Show when={props.authed()} fallback={<Install />}>
+      <Show
+        when={props.authed()}
+        fallback={isMobileDevice() ? <Install /> : <Navigate href="/login" />}
+      >
         <Protected>
           <Dashboard />
         </Protected>
@@ -557,6 +547,14 @@ const App: Component = () => {
       >
       <Router root={RouteTransitionRoot}>
         <Route path="/" component={() => <HomeRedirect authed={authed} />} />
+        <Route
+          path="/install"
+          component={() => (
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <Install />
+            </Suspense>
+          )}
+        />
         <Route
           path="/login"
           component={() =>

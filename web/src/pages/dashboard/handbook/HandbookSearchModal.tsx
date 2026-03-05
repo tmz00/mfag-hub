@@ -25,6 +25,8 @@ type Props = {
   onClose: () => void;
   closeOnResultClick?: boolean;
   renderAsPage?: boolean;
+  initialCategory?: string;
+  replaceResultNavigation?: boolean;
 };
 
 const DASHBOARD_HANDBOOK_RECENT_SEARCHES_KEY =
@@ -38,6 +40,9 @@ const HandbookSearchModal: Component<Props> = (props) => {
   const [searchLoading, setSearchLoading] = createSignal(false);
   const [searchError, setSearchError] = createSignal("");
   const [searchTerm, setSearchTerm] = createSignal("");
+  const [selectedCategory, setSelectedCategory] = createSignal(
+    (props.initialCategory || "").trim(),
+  );
   const [recentSearches, setRecentSearches] = createSignal<string[]>([]);
   const [searchInputFocused, setSearchInputFocused] = createSignal(false);
   let searchInputRef: HTMLInputElement | undefined;
@@ -77,7 +82,6 @@ const HandbookSearchModal: Component<Props> = (props) => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
     let currentSection = "";
-    let currentH1 = "";
     let currentH2 = "";
     const lines: {
       section: string;
@@ -96,7 +100,7 @@ const HandbookSearchModal: Component<Props> = (props) => {
       if (!cleaned) return;
       lines.push({
         section: currentSection,
-        h2: currentH2 || currentH1,
+        h2: currentH2,
         text: cleaned,
         kind,
         isSection,
@@ -110,12 +114,6 @@ const HandbookSearchModal: Component<Props> = (props) => {
         if (tag === "summary") {
           currentSection = el.textContent?.trim() || "";
           if (currentSection) pushLine(currentSection, true, "section");
-          return;
-        }
-        if (tag === "h1") {
-          currentH1 = el.textContent?.replace(/\s+/g, " ").trim() || "";
-          currentH2 = "";
-          if (currentH1) pushLine(currentH1, false, "line");
           return;
         }
         if (tag === "h2") {
@@ -235,14 +233,26 @@ const HandbookSearchModal: Component<Props> = (props) => {
     return `${prefix}${combined}${suffix}`;
   };
 
+  const availableCategories = createMemo(() =>
+    Array.from(
+      new Set(
+        handbookEntries()
+          .map((entry) => (entry.category || "").trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b)),
+  );
+
   const searchResults = createMemo<SearchResult[]>(() => {
     const term = searchTerm().trim();
     if (term.length < 3) return [];
     const normalizedTerm = term.toLowerCase();
+    const activeCategory = selectedCategory().trim().toLowerCase();
     const results: SearchResult[] = [];
 
     handbookEntries().forEach((entry) => {
       const category = entry.category || "Untitled category";
+      if (activeCategory && category.toLowerCase() !== activeCategory) return;
       const categoryMatch = category.toLowerCase().includes(normalizedTerm);
       const lines = extractContentLines(entry.content || "");
       let matched = false;
@@ -302,7 +312,7 @@ const HandbookSearchModal: Component<Props> = (props) => {
 
   const addRecentSearch = (value: string) => {
     const normalized = value.trim();
-    if (!normalized) return;
+    if (normalized.length < 3) return;
     setRecentSearches((prev) =>
       [
         normalized,
@@ -329,8 +339,9 @@ const HandbookSearchModal: Component<Props> = (props) => {
 
   const shouldShowRecentSearches = () =>
     isOpen() &&
-    matchingRecentSearches().length > 0 &&
-    (searchInputFocused() || searchTerm().trim().length === 0);
+    searchInputFocused() &&
+    searchTerm().trim().length > 0 &&
+    matchingRecentSearches().length > 0;
 
   const matchingRecentSearches = createMemo(() => {
     const term = searchTerm().trim().toLowerCase();
@@ -347,6 +358,14 @@ const HandbookSearchModal: Component<Props> = (props) => {
       searchInputRef?.focus();
       searchInputRef?.select();
     });
+  });
+
+  createEffect(() => {
+    if (!searchLoaded()) return;
+    const current = selectedCategory().trim();
+    if (!current) return;
+    if (availableCategories().includes(current)) return;
+    setSelectedCategory("");
   });
 
   createEffect(() => {
@@ -378,172 +397,193 @@ const HandbookSearchModal: Component<Props> = (props) => {
 
   return (
     <Show when={isOpen()}>
-      <div
-        class={
-          props.renderAsPage
-            ? "flex min-h-dvh w-full flex-col bg-white"
-            : "fixed inset-0 z-50 flex min-h-dvh w-full flex-col bg-white"
-        }
-      >
-        <div class="sticky top-0 z-20 flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-4">
-          <IconButton
-            type="button"
-            onClick={closeModal}
-            size="lg"
-            aria-label="Back"
-          >
-            <TbOutlineArrowLeft class="h-5 w-5" />
-          </IconButton>
-          <div class="relative w-full">
-            <input
-              type="search"
-              ref={searchInputRef}
-              value={searchTerm()}
-              onFocus={() => setSearchInputFocused(true)}
-              onBlur={() => {
-                window.setTimeout(() => setSearchInputFocused(false), 120);
-              }}
-              onInput={(e) => setSearchTerm(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                addRecentSearch(searchTerm());
-              }}
-              placeholder="Search handbook…"
-              class="h-11 w-full rounded-full border border-gray-200 bg-gray-50 px-4 text-base text-gray-800 shadow-inner focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary/40"
-            />
-            <Show when={shouldShowRecentSearches()}>
-              <div class="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1.5 shadow-lg">
-                <For each={matchingRecentSearches()}>
-                  {(term) => (
-                    <div class="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          setSearchTerm(term);
-                          setSearchInputFocused(false);
-                          searchInputRef?.focus();
-                          searchInputRef?.setSelectionRange(
-                            term.length,
-                            term.length,
-                          );
-                        }}
-                        class="flex-1 rounded-lg px-3 py-2 text-left text-base text-gray-700 hover:bg-gray-50"
-                      >
-                        {term}
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => removeRecentSearch(term)}
-                        class="rounded-lg px-2 py-2 text-base text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                        aria-label={`Delete ${term}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-        </div>
-        <div class="flex-1 overflow-y-auto px-4 py-6">
-          <Show
-            when={!searchLoading()}
-            fallback={
-              <LoadingState
-                label="Loading handbook search..."
-                class="justify-start text-gray-500"
-              />
-            }
-          >
-            <Show
-              when={!searchError()}
-              fallback={<p class="text-base text-red-600">{searchError()}</p>}
-            >
-              <Show
-                when={searchTerm().trim()}
-                fallback={
-                  <p class="text-base text-gray-500">
-                    Start typing to search across all handbook categories.
-                  </p>
-                }
-              >
-                <Show
-                  when={searchTerm().trim().length >= 3}
-                  fallback={
-                    <p class="text-base text-gray-500">
-                      Type at least 3 characters to see results.
-                    </p>
-                  }
-                >
-                  <Show
-                    when={searchResults().length > 0}
-                    fallback={
-                      <p class="text-base text-gray-600">No matching results.</p>
-                    }
+        <div
+          class={
+            props.renderAsPage
+              ? "flex min-h-dvh w-full flex-col bg-white"
+              : "fixed inset-0 z-50 flex min-h-dvh w-full flex-col bg-white"
+          }
+        >
+          <div class="sticky top-0 z-20 border-b border-gray-200 bg-white px-4 py-4">
+            <div class="mx-auto max-w-7xl">
+              <div class="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1 gap-y-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-3">
+                <div class="col-start-1 row-start-1">
+                  <IconButton
+                    type="button"
+                    onClick={closeModal}
+                    size="lg"
+                    aria-label="Back"
                   >
-                    <div class="space-y-3">
-                      <For each={searchResults()}>
-                        {(result) => (
-                          <A
-                          href={`/handbook/${result.id}?q=${encodeURIComponent(
-                            searchTerm().trim(),
-                          )}&t=${encodeURIComponent(
-                            result.targetText || result.category || "",
-                          )}&tk=${encodeURIComponent(
-                            result.targetKind,
-                          )}`}
-                          onClick={() => {
-                            addRecentSearch(searchTerm());
-                            if (props.closeOnResultClick ?? true) {
-                              props.onClose();
-                            }
-                          }}
-                            class="block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                          >
-                            <div class="flex items-baseline gap-2">
-                              <div class="text-base font-semibold text-gray-900">
-                                {highlightText(
-                                  result.category || "Untitled category",
-                                  searchTerm().trim(),
-                                )}
-                              </div>
-                              <Show when={result.h2}>
-                                <div class="text-sm font-medium text-gray-500">
-                                  / {highlightText(result.h2, searchTerm().trim())}
-                                </div>
-                              </Show>
-                            </div>
-                            <Show when={result.section}>
-                              <div class="mt-1 text-sm font-semibold uppercase text-primary">
-                                {highlightText(
-                                  result.section,
-                                  searchTerm().trim(),
-                                )}
-                              </div>
-                            </Show>
-                            <Show when={result.lines.length > 0}>
-                              <div class="mt-2 space-y-1 text-sm text-gray-600">
-                                <For each={result.lines}>
-                                  {(line) => (
-                                    <p>
-                                      {highlightText(line, searchTerm().trim())}
-                                    </p>
-                                  )}
-                                </For>
-                              </div>
-                            </Show>
-                          </A>
+                    <TbOutlineArrowLeft class="h-5 w-5" />
+                  </IconButton>
+                </div>
+                <div class="relative col-start-2 row-start-1 min-w-0">
+                  <input
+                    type="search"
+                    ref={searchInputRef}
+                    value={searchTerm()}
+                    onFocus={() => setSearchInputFocused(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => setSearchInputFocused(false), 120);
+                    }}
+                    onInput={(e) => setSearchTerm(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      addRecentSearch(searchTerm());
+                    }}
+                    placeholder={
+                      selectedCategory() ? "Search category..." : "Search handbook..."
+                    }
+                    class="handbook-search-input h-11 w-full rounded-full border border-gray-200 bg-gray-50 px-4 text-base text-gray-800 shadow-inner focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                  <Show when={shouldShowRecentSearches()}>
+                    <div class="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1.5 shadow-lg">
+                      <For each={matchingRecentSearches()}>
+                        {(term) => (
+                          <div class="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => {
+                                setSearchTerm(term);
+                                setSearchInputFocused(false);
+                                searchInputRef?.focus();
+                                searchInputRef?.setSelectionRange(
+                                  term.length,
+                                  term.length,
+                                );
+                              }}
+                              class="flex-1 rounded-lg px-3 py-2 text-left text-base text-gray-700 hover:bg-gray-50"
+                            >
+                              {term}
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => removeRecentSearch(term)}
+                              class="rounded-lg px-2 py-2 text-base text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                              aria-label={`Delete ${term}`}
+                            >
+                              ×
+                            </button>
+                          </div>
                         )}
                       </For>
                     </div>
                   </Show>
+                </div>
+                <Show when={availableCategories().length > 0}>
+                  <div class="col-start-2 row-start-2 min-w-0 lg:col-start-3 lg:row-start-1 lg:w-64">
+                    <select
+                      id="handbook-search-category"
+                      aria-label="Search in"
+                      value={selectedCategory()}
+                      onChange={(e) => setSelectedCategory(e.currentTarget.value)}
+                      class="h-9 w-full rounded-full border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    >
+                      <option value="">All categories</option>
+                      <For each={availableCategories()}>
+                        {(category) => (
+                          <option value={category}>{category}</option>
+                        )}
+                      </For>
+                    </select>
+                  </div>
+                </Show>
+              </div>
+            </div>
+          </div>
+        <div class="flex-1 overflow-y-auto">
+          <div class="mx-auto max-w-7xl px-4 py-6">
+            <Show
+              when={!searchLoading()}
+              fallback={
+                <LoadingState
+                  label="Loading handbook search..."
+                  class="justify-start text-gray-500"
+                />
+              }
+            >
+              <Show
+                when={!searchError()}
+                fallback={<p class="text-base text-red-600">{searchError()}</p>}
+              >
+                <Show
+                  when={searchTerm().trim()}
+                  fallback={<></>}
+                >
+                  <Show
+                    when={searchTerm().trim().length >= 3}
+                    fallback={<></>}
+                  >
+                    <Show
+                      when={searchResults().length > 0}
+                      fallback={
+                        <p class="text-base text-gray-600">No matching results.</p>
+                      }
+                    >
+                      <div class="space-y-3">
+                        <For each={searchResults()}>
+                          {(result) => (
+                            <A
+                              href={`/handbook/${result.id}?q=${encodeURIComponent(
+                                searchTerm().trim(),
+                              )}&t=${encodeURIComponent(
+                                result.targetText || result.category || "",
+                              )}&tk=${encodeURIComponent(
+                                result.targetKind,
+                              )}`}
+                              replace={props.replaceResultNavigation}
+                              onClick={() => {
+                                addRecentSearch(searchTerm());
+                                if (props.closeOnResultClick ?? true) {
+                                  props.onClose();
+                                }
+                              }}
+                              class="block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                            >
+                              <div class="flex items-baseline gap-2">
+                                <div class="text-base font-semibold text-gray-900">
+                                  {highlightText(
+                                    result.category || "Untitled category",
+                                    searchTerm().trim(),
+                                  )}
+                                </div>
+                                <Show when={result.h2}>
+                                  <div class="text-sm font-medium text-gray-500">
+                                    / {highlightText(result.h2, searchTerm().trim())}
+                                  </div>
+                                </Show>
+                              </div>
+                              <Show when={result.section}>
+                                <div class="mt-1 text-sm font-semibold uppercase text-primary">
+                                  {highlightText(
+                                    result.section,
+                                    searchTerm().trim(),
+                                  )}
+                                </div>
+                              </Show>
+                              <Show when={result.lines.length > 0}>
+                                <div class="mt-2 space-y-1 text-sm text-gray-600">
+                                  <For each={result.lines}>
+                                    {(line) => (
+                                      <p>
+                                        {highlightText(line, searchTerm().trim())}
+                                      </p>
+                                    )}
+                                  </For>
+                                </div>
+                              </Show>
+                            </A>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                  </Show>
                 </Show>
               </Show>
             </Show>
-          </Show>
+          </div>
         </div>
       </div>
     </Show>

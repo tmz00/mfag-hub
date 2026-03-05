@@ -52,11 +52,13 @@ import {
 } from "../../../services/closingsService";
 import { authService } from "../../../services/authService";
 import { teamService } from "../../../services/teamService";
+import { productsService } from "../../../services/productsService";
 import {
   annualizePremium,
   calculateProductFyc,
   countInvalidPremiumFrequencyRows,
 } from "../../../utils/closingMetrics";
+import { appendAttachedSuffixesByRiderProductId } from "../../../utils/attachedSuffix";
 import ClosingDisplayBlock from "./_ClosingDisplayBlock";
 import {
   buildClosingDisplayModel,
@@ -195,7 +197,11 @@ function hasClassification(items: ClosingProduct[]): boolean {
   return items.some((item) => !!item.type);
 }
 
-function toClosingDisplayModel(closing: Closing, timeLabel?: string) {
+function toClosingDisplayModel(
+  closing: Closing,
+  timeLabel?: string,
+  riderAttachedSuffixByProductId: Record<string, string> = {},
+) {
   const { fyc } = calculateClosingFycAndCaseCount(closing.items);
   const afyp = calculateClosingAfyp(closing.items);
 
@@ -214,7 +220,11 @@ function toClosingDisplayModel(closing: Closing, timeLabel?: string) {
       const itemFyc = calculateClosingFycAndCaseCount([item]).fyc;
       return {
         quantity: totalQty,
-        shortName: item.shortName,
+        shortName: appendAttachedSuffixesByRiderProductId(
+          item.shortName,
+          item.riders || [],
+          riderAttachedSuffixByProductId,
+        ),
         fyc: itemFyc,
       };
     }),
@@ -271,11 +281,16 @@ function formatDateFilterValue(date: Date): string {
 function formatClosingsForWhatsApp(
   closings: Closing[],
   dateStr: string,
+  riderAttachedSuffixByProductId: Record<string, string> = {},
 ): string {
   let message = `*Closing for ${dateStr}*\n\n`;
 
   closings.forEach((closing) => {
-    const model = toClosingDisplayModel(closing);
+    const model = toClosingDisplayModel(
+      closing,
+      undefined,
+      riderAttachedSuffixByProductId,
+    );
 
     message += `${formatClosingDisplayForWhatsApp(model)}\n\n`;
   });
@@ -348,6 +363,19 @@ const Closings: Component = () => {
     },
     { initialValue: [] },
   );
+  const [productsCatalog] = createResource(() => productsService.getProducts());
+  const riderAttachedSuffixByProductId = createMemo<Record<string, string>>(() => {
+    const catalog = productsCatalog();
+    const riders = Array.isArray(catalog?.riders) ? catalog.riders : [];
+    const mapping: Record<string, string> = {};
+    for (const rider of riders) {
+      const id = String(rider.id || "").trim();
+      const suffix = String(rider.attachedSuffix || "").trim();
+      if (!id || !suffix) continue;
+      mapping[id] = suffix;
+    }
+    return mapping;
+  });
   const filteredClosings = createMemo(() => {
     const allClosings = closings() ?? [];
     if (filterMode() === "all") return allClosings;
@@ -674,9 +702,13 @@ const Closings: Component = () => {
                   <_ClosingsList
                     closings={filteredClosings}
                     stickyTopOffset={stickyControlsHeight()}
+                    riderAttachedSuffixByProductId={riderAttachedSuffixByProductId()}
                   />
 
-                  <_ShareButton closings={filteredClosings} />
+                  <_ShareButton
+                    closings={filteredClosings}
+                    riderAttachedSuffixByProductId={riderAttachedSuffixByProductId()}
+                  />
                 </Show>
 
               </Show>
@@ -808,7 +840,11 @@ const _PeriodSelector: Component = () => {
   );
 };
 
-const _ClosingsList: Component<{ closings: any; stickyTopOffset?: number }> = (
+const _ClosingsList: Component<{
+  closings: any;
+  stickyTopOffset?: number;
+  riderAttachedSuffixByProductId?: Record<string, string>;
+}> = (
   props,
 ) => {
   const navigate = useNavigate();
@@ -975,7 +1011,11 @@ const _ClosingsList: Component<{ closings: any; stickyTopOffset?: number }> = (
                         return (
                           <div class="px-4 py-3">
                             <ClosingDisplayBlock
-                              model={toClosingDisplayModel(closing, closingTime)}
+                              model={toClosingDisplayModel(
+                                closing,
+                                closingTime,
+                                props.riderAttachedSuffixByProductId || {},
+                              )}
                               rightAction={
                                 <Show when={isOwnClosing() || isAdmin()}>
                                   <IconButton
@@ -1007,7 +1047,10 @@ const _ClosingsList: Component<{ closings: any; stickyTopOffset?: number }> = (
   );
 };
 
-const _ShareButton: Component<{ closings: any }> = (props) => {
+const _ShareButton: Component<{
+  closings: any;
+  riderAttachedSuffixByProductId?: Record<string, string>;
+}> = (props) => {
   const copyToClipboard = async (text: string) => {
     try {
       if (navigator.clipboard?.writeText) {
@@ -1050,7 +1093,11 @@ const _ShareButton: Component<{ closings: any }> = (props) => {
       });
     }
 
-    const message = formatClosingsForWhatsApp(props.closings() ?? [], dateStr);
+    const message = formatClosingsForWhatsApp(
+      props.closings() ?? [],
+      dateStr,
+      props.riderAttachedSuffixByProductId || {},
+    );
     await copyToClipboard(message);
     const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");

@@ -420,6 +420,30 @@ describe("ManageReportTemplates admin page", () => {
 
     expect(screen.getByText("Columns")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add Column" })).toBeTruthy();
+    expect(screen.getByLabelText("Column Group Gap (px)")).toBeTruthy();
+    expect(screen.queryByLabelText("Table Gap (px)")).toBeNull();
+  });
+
+  it("labels value label as header for single-table columns", async () => {
+    await renderManageReportTemplates();
+
+    await waitFor(() => {
+      expect(screen.getByText("Top Stats")).toBeTruthy();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add Report Template" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Title")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText("Single Table"));
+    fireEvent.click(screen.getByRole("button", { name: "Add Column" }));
+
+    expect(screen.getByLabelText("Header")).toBeTruthy();
+    expect(screen.queryByLabelText("Value Label")).toBeNull();
   });
 
   it("deletes a template and persists the updated list", async () => {
@@ -654,6 +678,36 @@ describe("ManageReportTemplates admin page", () => {
     ).toBeTruthy();
     expect(includeAllAdvisorsLabel.textContent).toBe("Include all advisors");
     expect(includeAllAgenciesLabel.textContent).toBe("Include all agencies");
+  });
+
+  it("preserves spaces and blank lines while editing title lines", async () => {
+    await renderManageReportTemplates();
+
+    await waitFor(() => {
+      expect(screen.getByText("Top Stats")).toBeTruthy();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add Report Template" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Title")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+
+    const titleLinesInput = screen.getByLabelText(
+      "Title Lines (one per line)",
+    ) as HTMLTextAreaElement;
+
+    titleLinesInput.value = "TOP ";
+    fireEvent.input(titleLinesInput);
+    expect(titleLinesInput.value).toBe("TOP ");
+
+    titleLinesInput.value = "TOP\n";
+    fireEvent.input(titleLinesInput);
+    expect(titleLinesInput.value).toBe("TOP\n");
   });
 
   it("treats empty source filters as all selected and edits them in the source picker modal", async () => {

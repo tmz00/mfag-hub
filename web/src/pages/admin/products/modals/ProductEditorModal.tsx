@@ -112,6 +112,9 @@ const ProductEditorModal: Component<Props> = (props) => {
   const [formShortName, setFormShortName] = createSignal(
     props.editingItem?.shortName || "",
   );
+  const [formAttachedSuffix, setFormAttachedSuffix] = createSignal(
+    props.editingTab === "riders" ? (props.editingItem as Rider | null)?.attachedSuffix || "" : "",
+  );
   const [formType, setFormType] = createSignal(props.editingItem?.type || "");
   const [formNotes, setFormNotes] = createSignal(
     props.editingItem?.notes || "",
@@ -147,6 +150,26 @@ const ProductEditorModal: Component<Props> = (props) => {
     props.editingTab === "basePlans" && props.editingItem
       ? [...((props.editingItem as BasePlan).attachableRiders || [])]
       : [],
+  );
+  const [formAttachableRiderSuffixes, setFormAttachableRiderSuffixes] = createSignal<
+    Record<string, string>
+  >(
+    (() => {
+      if (props.editingTab !== "basePlans") return {};
+      const selected =
+        props.editingItem && "attachableRiders" in props.editingItem
+          ? (props.editingItem.attachableRiders || [])
+          : [];
+      if (selected.length === 0) return {};
+      const riderById = new Map(
+        riders().map((rider) => [rider.id, rider] as const),
+      );
+      const suffixes: Record<string, string> = {};
+      for (const riderId of selected) {
+        suffixes[riderId] = riderById.get(riderId)?.attachedSuffix || "";
+      }
+      return suffixes;
+    })(),
   );
   const [showAttachablePicker, setShowAttachablePicker] = createSignal(false);
   const [optionRowAnimating, setOptionRowAnimating] = createSignal<
@@ -237,6 +260,10 @@ const ProductEditorModal: Component<Props> = (props) => {
       category: props.editingItem?.category || "",
       fullName: props.editingItem?.fullName || "",
       shortName: props.editingItem?.shortName || "",
+      attachedSuffix:
+        props.editingTab === "riders"
+          ? (props.editingItem as Rider | null)?.attachedSuffix || ""
+          : "",
       type: props.editingItem?.type || "",
       notes: props.editingItem?.notes || "",
       optionTitle: props.editingItem?.optionTitle || "",
@@ -257,6 +284,14 @@ const ProductEditorModal: Component<Props> = (props) => {
         props.editingTab === "basePlans" && props.editingItem
           ? (props.editingItem as BasePlan).attachableRiders || []
           : [],
+      attachableRiderSuffixes:
+        props.editingTab === "basePlans" && props.editingItem
+          ? (props.editingItem as BasePlan).attachableRiders || []
+              .map((riderId) => {
+                const rider = riders().find((item) => item.id === riderId);
+                return [riderId, rider?.attachedSuffix || ""] as const;
+              })
+          : [],
     });
   const [initialSnapshot, setInitialSnapshot] =
     createSignal(getInitialSnapshot());
@@ -267,6 +302,7 @@ const ProductEditorModal: Component<Props> = (props) => {
       category: formCategory(),
       fullName: formFullName(),
       shortName: formShortName(),
+      attachedSuffix: formAttachedSuffix(),
       type: formType(),
       notes: formNotes(),
       optionTitle: formOptionTitle(),
@@ -277,6 +313,10 @@ const ProductEditorModal: Component<Props> = (props) => {
       gst: formGst(),
       countsTowardProduction: formCountsTowardProduction(),
       attachableRiders: formAttachableRiders(),
+      attachableRiderSuffixes: formAttachableRiders().map((riderId) => [
+        riderId,
+        formAttachableRiderSuffixes()[riderId] || "",
+      ]),
     });
 
   const hasUnsavedChanges = () => currentSnapshot() !== initialSnapshot();
@@ -384,11 +424,33 @@ const ProductEditorModal: Component<Props> = (props) => {
     return freq;
   };
   const toggleAttachableRider = (id: string) => {
-    setFormAttachableRiders((prev) =>
-      prev.includes(id)
-        ? prev.filter((value) => value !== id)
-        : [...prev, id],
-    );
+    const rider = riders().find((item) => item.id === id);
+    const defaultSuffix = rider?.attachedSuffix || "";
+
+    setFormAttachableRiders((prev) => {
+      const isSelected = prev.includes(id);
+      if (isSelected) {
+        setFormAttachableRiderSuffixes((suffixes) => {
+          const next = { ...suffixes };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((value) => value !== id);
+      }
+
+      setFormAttachableRiderSuffixes((suffixes) => ({
+        ...suffixes,
+        [id]: suffixes[id] ?? defaultSuffix,
+      }));
+      return [...prev, id];
+    });
+  };
+
+  const handleAttachableRiderSuffixChange = (id: string, value: string) => {
+    setFormAttachableRiderSuffixes((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
   };
 
   const handleSave = async () => {
@@ -451,6 +513,10 @@ const ProductEditorModal: Component<Props> = (props) => {
       gst: formGst() ? "Y" : undefined,
       countsTowardProduction: formCountsTowardProduction() ? undefined : "N",
       attachableRiders: attachableIds,
+      attachedSuffix:
+        props.editingTab === "riders"
+          ? formAttachedSuffix().trim() || undefined
+          : undefined,
     };
 
     const list =
@@ -462,11 +528,24 @@ const ProductEditorModal: Component<Props> = (props) => {
       list.push(nextItem as any);
     }
 
+    const updatedRiders =
+      props.editingTab === "basePlans"
+        ? riders().map((rider) => {
+            if (!formAttachableRiders().includes(rider.id)) return rider;
+            const suffix =
+              formAttachableRiderSuffixes()[rider.id]?.trim() || "";
+            return {
+              ...rider,
+              attachedSuffix: suffix || undefined,
+            };
+          })
+        : (list as Rider[]);
+
     const updated: ProductCatalog = {
       ...props.catalog,
       basePlans:
         props.editingTab === "riders" ? basePlans() : (list as BasePlan[]),
-      riders: props.editingTab === "riders" ? (list as Rider[]) : riders(),
+      riders: updatedRiders,
     };
 
     setSaving(true);
@@ -544,6 +623,33 @@ const ProductEditorModal: Component<Props> = (props) => {
                 <TbOutlinePlus class="h-3.5 w-3.5" />
               </div>
             </button>
+            <Show when={selectedAttachableRiders().length > 0}>
+              <div class="mt-3 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p class="text-sm text-gray-600">
+                  Optional text to append to base plan shortname when rider is attached.
+                </p>
+                <For each={selectedAttachableRiders()}>
+                  {(rider) => (
+                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center">
+                      <div class="min-w-0 text-sm font-medium text-gray-700">
+                        {rider.shortName || rider.fullName || rider.id}
+                      </div>
+                      <input
+                        type="text"
+                        value={formAttachableRiderSuffixes()[rider.id] || ""}
+                        onInput={(e) =>
+                          handleAttachableRiderSuffixChange(
+                            rider.id,
+                            e.currentTarget.value,
+                          )}
+                        placeholder="e.g. [N]"
+                        class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-admin-from focus:outline-none focus:ring-1 focus:ring-admin-from/40"
+                      />
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
           </div>
         </Show>
 

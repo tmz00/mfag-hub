@@ -444,6 +444,7 @@ class LegacyImportProductsSeeder extends Seeder
             'type' => $this->nullableTrimmedString($product['type'] ?? null),
             'fullName' => $this->nullableTrimmedString($product['fullName'] ?? null),
             'shortName' => $this->nullableTrimmedString($product['shortName'] ?? null),
+            'attachedSuffix' => $this->nullableTrimmedString($product['attachedSuffix'] ?? null),
             'notes' => $this->nullableTrimmedString($product['notes'] ?? null),
             'optionTitle' => $this->nullableTrimmedString($product['optionTitle'] ?? null),
             'fycRate' => $this->nullableTrimmedString($product['fycRate'] ?? null),
@@ -456,7 +457,7 @@ class LegacyImportProductsSeeder extends Seeder
             $normalized['attachableRiders'] = $product['attachableRiders'];
         }
 
-        foreach (['category', 'type', 'fullName', 'shortName', 'notes', 'optionTitle', 'fycRate', 'gst'] as $field) {
+        foreach (['category', 'type', 'fullName', 'shortName', 'attachedSuffix', 'notes', 'optionTitle', 'fycRate', 'gst'] as $field) {
             if (($normalized[$field] ?? null) === null) {
                 unset($normalized[$field]);
             }
@@ -661,6 +662,7 @@ class LegacyImportProductsSeeder extends Seeder
             'category' => $this->nullableString($row['category'] ?? null, 100),
             'full_name' => $this->nullableString($row['fullName'] ?? $row['full_name'] ?? null, 200),
             'short_name' => $this->nullableString($row['shortName'] ?? $row['short_name'] ?? null, 120),
+            'attached_suffix' => $this->nullableString($row['attachedSuffix'] ?? $row['attached_suffix'] ?? null, 120),
             'type_key' => $this->nullableString($typeKey, 50),
             'notes' => $this->nullableString($row['notes'] ?? null, 65535),
             'option_title' => $this->nullableString($row['optionTitle'] ?? $row['option_title'] ?? null, 150),

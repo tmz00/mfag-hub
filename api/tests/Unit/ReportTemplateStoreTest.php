@@ -117,4 +117,35 @@ class ReportTemplateStoreTest extends TestCase
 
         $this->assertEquals($normalized, $store->list());
     }
+
+    public function test_replace_keeps_blank_value_label_for_single_table_reports(): void
+    {
+        $store = app(ReportTemplateStore::class);
+
+        $normalized = $store->replace([
+            [
+                'id' => 2,
+                'title' => 'Single Table',
+                'singleTable' => true,
+                'tables' => [
+                    [
+                        'id' => 21,
+                        'titleLines' => ['TOP'],
+                        'valueLabel' => '   ',
+                        'metric' => ['type' => 'countClosings'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('', $normalized[0]['tables'][0]['valueLabel']);
+
+        $this->assertDatabaseHas('report_template_tables', [
+            'id' => 21,
+            'report_template_id' => 2,
+            'value_label' => '',
+        ]);
+
+        $this->assertSame('', $store->list()[0]['tables'][0]['valueLabel']);
+    }
 }

@@ -80,6 +80,34 @@ function stripBrackets(value: string) {
   return trimmed;
 }
 
+type RenderedTitleLine = {
+  text: string;
+  italic: boolean;
+};
+
+function getRenderedTitleLines(titleLines?: string[]): RenderedTitleLine[] {
+  return (titleLines || [])
+    .slice(0, 3)
+    .map((line, index) => {
+      if (index > 0 && line.trim().length === 0) {
+        return null;
+      }
+
+      if (index === 2) {
+        return {
+          text: stripBrackets(line),
+          italic: true,
+        };
+      }
+
+      return {
+        text: line,
+        italic: false,
+      };
+    })
+    .filter((line): line is RenderedTitleLine => line !== null);
+}
+
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
   const words = text.split(" ");
   const lines: string[] = [];
@@ -95,6 +123,32 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   });
   if (current) lines.push(current);
   return lines;
+}
+
+function wrapTextPreservingEmpty(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+) {
+  if (text.length === 0) {
+    return [text];
+  }
+
+  const lines = wrapText(ctx, text, maxWidth);
+  return lines.length > 0 ? lines : [text];
+}
+
+function wrapRenderedTitleLines(
+  ctx: CanvasRenderingContext2D,
+  lines: RenderedTitleLine[],
+  maxWidth: number,
+): RenderedTitleLine[] {
+  return lines.flatMap((line) =>
+    wrapTextPreservingEmpty(ctx, line.text, maxWidth).map((text) => ({
+      text,
+      italic: line.italic,
+    })),
+  );
 }
 
 function applyTemplate(template: string, date: Date) {
@@ -130,13 +184,29 @@ function resolveRenderedFootnote(
     : applyTemplate(table.footnote, reportDate);
 }
 
-function getSingleTableColumnLabel(table: RenderTable) {
-  const title = (table.titleLines || [])
-    .map((line) => stripBrackets(line))
-    .map((line) => line.trim())
-    .filter(Boolean)
+function getSingleTableHeaderLines(table: RenderTable) {
+  return getRenderedTitleLines(table.titleLines);
+}
+
+function getSingleTableFootnoteLabel(table: RenderTable) {
+  const title = getSingleTableHeaderLines(table)
+    .map((line) => line.text)
+    .filter((line) => line.trim().length > 0)
     .join(" ");
-  return title || table.valueLabel || "Value";
+  return title || (table.valueLabel || "").trim();
+}
+
+function getSingleTableGroupLabel(table: RenderTable) {
+  return (table.valueLabel || "").trim();
+}
+
+function getSingleTableMetricColumnGapBefore(
+  labels: string[],
+  tableGap: number,
+) {
+  return labels.map((label, index) =>
+    index === 0 || label !== labels[index - 1] ? tableGap : 0,
+  );
 }
 
 export function buildReportCanvas(options: BuildReportCanvasOptions) {
@@ -156,6 +226,7 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
   const tableGap = report.tableGap;
   const titlePadding = 8;
   const titleLineHeight = 14;
+  const titleTextBaselineInset = 20;
   const headerRowHeight = 28;
   const rowHeight = 24;
   const primaryColor = getPrimaryColor();
@@ -202,8 +273,19 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
 
   const maxTitleLines = 3;
   const maxTitleBlockHeight = titlePadding * 2 + maxTitleLines * titleLineHeight + 2;
+  const singleTitleRowMinHeight = titlePadding * 2 + titleLineHeight + 2;
   const singleTableNameColumnWidth = 120;
   const footerTotalFont = "800 12px \"Aptos Narrow\", sans-serif";
+  const singleTableColumns = tables.filter((table) => !table.indexOnly);
+  const singleTableGroupLabels = singleTableColumns.map(getSingleTableGroupLabel);
+  const singleTableMetricColumnGaps = getSingleTableMetricColumnGapBefore(
+    singleTableGroupLabels,
+    tableGap,
+  );
+  const singleTableGroupGapWidth = singleTableMetricColumnGaps.reduce(
+    (sum, gap) => sum + gap,
+    0,
+  );
 
   const tableWidthFor = (table: RenderTable) =>
     table.indexOnly ? report.indexTableWidth : tableWidth;
@@ -218,7 +300,8 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
     ? pagePadding * 2 +
       (report.includeIndexTable ? report.indexTableWidth : 0) +
       singleTableNameColumnWidth +
-      tables.filter((table) => !table.indexOnly).length * tableWidth
+      singleTableColumns.length * tableWidth +
+      singleTableGroupGapWidth
     : pagePadding * 2 +
       tables.reduce((sum, table) => sum + tableWidthFor(table), 0) +
       totalGaps;
@@ -363,8 +446,15 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
   if (report.singleTable) {
     const columnTitleFont = "600 12px \"Aptos Narrow\", sans-serif";
     const bodyFont = "700 12px \"Aptos Narrow\", sans-serif";
-    const singleTableColumns = tables.filter((table) => !table.indexOnly);
-    const singleHeaderLabels = singleTableColumns.map(getSingleTableColumnLabel);
+    const singleGroupLabels = singleTableGroupLabels;
+    const singleHeaderLineSets = singleTableColumns.map((table) =>
+      wrapRenderedTitleLines(
+        ctx,
+        getSingleTableHeaderLines(table),
+        Math.max(20, tableWidth - 8),
+      ),
+    );
+    const singleFootnoteLabels = singleTableColumns.map(getSingleTableFootnoteLabel);
     const rowMap = new Map<string, string>();
     const valueMaps = new Map<RenderTable["id"], Map<string, number>>();
     const columnTotals = new Map<RenderTable["id"], number>();
@@ -395,21 +485,20 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
     const headerLabels = [
       ...(report.includeIndexTable ? ["No"] : []),
       "FSC",
-      ...singleHeaderLabels,
     ];
     const columnWidths = [
       ...(report.includeIndexTable ? [report.indexTableWidth] : []),
       singleTableNameColumnWidth,
-      ...singleTableColumns.map(() => tableWidth),
     ];
 
     ctx.font = columnTitleFont;
-    const headerLineCounts = headerLabels.map((label, index) =>
-      Math.max(
-        1,
-        wrapText(ctx, label, Math.max(20, columnWidths[index]! - 8)).length,
-      ),
+    const leadingHeaderLineCounts = headerLabels.map((label, index) =>
+      Math.max(1, wrapText(ctx, label, Math.max(20, columnWidths[index]! - 8)).length),
     );
+    const headerLineCounts = [
+      ...leadingHeaderLineCounts,
+      ...singleHeaderLineSets.map((lines) => Math.max(1, lines.length)),
+    ];
     const singleHeaderRowHeight =
       8 + Math.max(...headerLineCounts) * titleLineHeight;
 
@@ -417,7 +506,8 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
       .map((table, index) => {
         const text = resolveRenderedFootnote(table, reportDate);
         if (!text) return null;
-        const label = `${singleHeaderLabels[index] || "Column"}: ${text}`;
+        const labelPrefix = singleFootnoteLabels[index];
+        const label = labelPrefix ? `${labelPrefix}: ${text}` : text;
         const lines = wrapText(
           ctx,
           label,
@@ -446,8 +536,80 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
         : hasFooterTotals
           ? bottomFootnoteTopPaddingAfterFooterRows
           : bottomFootnoteTopPaddingWithoutSiblingFooters;
-    const singleTableWidth = columnWidths.reduce((sum, value) => sum + value, 0);
+    const leadingTitleWidth =
+      (report.includeIndexTable ? report.indexTableWidth : 0) +
+      singleTableNameColumnWidth;
+    const metricColumnGapBefore = singleTableMetricColumnGaps;
+    const totalMetricGapWidth = metricColumnGapBefore.reduce(
+      (sum, gap) => sum + gap,
+      0,
+    );
+    const metricAreaWidth = singleTableColumns.length * tableWidth + totalMetricGapWidth;
+    const metricColumnXs: number[] = [];
+    let nextMetricX = leadingTitleWidth;
+    singleTableColumns.forEach((_, index) => {
+      nextMetricX += metricColumnGapBefore[index] || 0;
+      metricColumnXs.push(nextMetricX);
+      nextMetricX += tableWidth;
+    });
+    const singleTitleRowSegments: Array<{
+      text: string;
+      x: number;
+      width: number;
+      lines: string[];
+    }> = [];
+    let currentLabelIndex = 0;
+
+    while (currentLabelIndex < singleGroupLabels.length) {
+      const label = singleGroupLabels[currentLabelIndex]!;
+      let runLength = 1;
+      while (
+        currentLabelIndex + runLength < singleGroupLabels.length &&
+        singleGroupLabels[currentLabelIndex + runLength] === label
+      ) {
+        runLength += 1;
+      }
+
+      const segmentX = metricColumnXs[currentLabelIndex] || leadingTitleWidth;
+      const lastColumnIndex = currentLabelIndex + runLength - 1;
+      const segmentEnd =
+        (metricColumnXs[lastColumnIndex] || segmentX) + tableWidth;
+      const segmentWidth = Math.max(0, segmentEnd - segmentX);
+
+      singleTitleRowSegments.push({
+        text: label,
+        x: segmentX,
+        width: segmentWidth,
+        lines: wrapTextPreservingEmpty(
+          ctx,
+          label,
+          Math.max(20, segmentWidth - 8),
+        ),
+      });
+
+      currentLabelIndex += runLength;
+    }
+
+    const maxSingleTitleRowLineCount =
+      singleTitleRowSegments.length > 0
+        ? Math.max(
+            1,
+            ...singleTitleRowSegments.map((segment) =>
+              Math.max(1, segment.lines.length),
+            ),
+          )
+        : 0;
+    const singleTitleRowHeight =
+      singleTitleRowSegments.length > 0
+        ? Math.max(
+            singleTitleRowMinHeight,
+            titlePadding * 2 + maxSingleTitleRowLineCount * titleLineHeight + 2,
+          )
+        : 0;
+    const singleTableWidth =
+      columnWidths.reduce((sum, value) => sum + value, 0) + metricAreaWidth;
     const singleTableHeight =
+      singleTitleRowHeight +
       singleHeaderRowHeight +
       rowHeight * rowCount +
       (hasFooterTotals ? rowHeight : 0);
@@ -494,85 +656,145 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
     const x = pagePadding;
     const y = tableTopY;
     ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 1;
     ctx.fillRect(x, y, singleTableWidth, singleTableHeight);
-    ctx.strokeRect(x, y, singleTableWidth, singleTableHeight);
 
-    const headerTop = y;
-    ctx.fillStyle = secondaryColor;
-    ctx.fillRect(x, headerTop, singleTableWidth, singleHeaderRowHeight);
-    ctx.strokeStyle = "#000000";
-    ctx.strokeRect(x, headerTop, singleTableWidth, singleHeaderRowHeight);
+    const titleRowTop = y;
+    const metricColumnXsAbsolute = metricColumnXs.map((value) => x + value);
+    const indexColumnWidth = report.includeIndexTable ? report.indexTableWidth : 0;
+    const indexColumnX = x;
+    const nameColumnX = x + indexColumnWidth;
 
-    let currentColumnX = x;
-    columnWidths.forEach((columnWidth, index) => {
-      if (index > 0) {
-        ctx.beginPath();
-        ctx.moveTo(currentColumnX, headerTop);
-        ctx.lineTo(currentColumnX, headerTop + singleTableHeight);
-        ctx.stroke();
-      }
-
-      const lines = wrapText(
-        ctx,
-        headerLabels[index]!,
-        Math.max(20, columnWidth - 8),
-      );
-      const contentHeight = lines.length * titleLineHeight;
-      let headerY =
-        headerTop + (singleHeaderRowHeight - contentHeight) / 2 + 10;
+    if (singleTitleRowHeight > 0) {
+      ctx.fillStyle = primaryColor;
+      ctx.fillRect(x, titleRowTop, leadingTitleWidth, singleTitleRowHeight);
+      ctx.strokeStyle = "#000000";
+      ctx.strokeRect(x, titleRowTop, leadingTitleWidth, singleTitleRowHeight);
       ctx.fillStyle = "#ffffff";
-      ctx.font = columnTitleFont;
+      ctx.font = "600 12px \"Aptos Narrow\", sans-serif";
+
+      const drawTitleSegment = (segment: (typeof singleTitleRowSegments)[number]) => {
+        const titleOffset =
+          ((maxSingleTitleRowLineCount - segment.lines.length) * titleLineHeight) / 2;
+        let titleY = titleRowTop + titleTextBaselineInset + titleOffset;
+        ctx.fillStyle = primaryColor;
+        ctx.fillRect(x + segment.x, titleRowTop, segment.width, singleTitleRowHeight);
+        ctx.strokeStyle = "#000000";
+        ctx.strokeRect(x + segment.x, titleRowTop, segment.width, singleTitleRowHeight);
+        ctx.fillStyle = "#ffffff";
+        segment.lines.forEach((line) => {
+          if (line.length === 0) {
+            titleY += titleLineHeight;
+            return;
+          }
+          const lineWidth = ctx.measureText(line).width;
+          const lineX = x + segment.x + (segment.width - lineWidth) / 2;
+          ctx.fillText(line, lineX, titleY);
+          titleY += titleLineHeight;
+        });
+      };
+
+      singleTitleRowSegments.forEach((segment) => {
+        drawTitleSegment(segment);
+      });
+    }
+
+    const headerTop = y + singleTitleRowHeight;
+    const drawHeaderCell = (
+      cellX: number,
+      cellWidth: number,
+      lines: string[],
+      options?: { italic?: boolean },
+    ) => {
+      const contentHeight = lines.length * titleLineHeight;
+      let headerY = headerTop + (singleHeaderRowHeight - contentHeight) / 2 + 10;
+      ctx.fillStyle = secondaryColor;
+      ctx.fillRect(cellX, headerTop, cellWidth, singleHeaderRowHeight);
+      ctx.strokeStyle = "#000000";
+      ctx.strokeRect(cellX, headerTop, cellWidth, singleHeaderRowHeight);
+      ctx.fillStyle = "#ffffff";
       lines.forEach((line) => {
+        ctx.font = `${options?.italic ? "italic " : ""}${columnTitleFont}`;
         const lineWidth = ctx.measureText(line).width;
-        const lineX = currentColumnX + (columnWidth - lineWidth) / 2;
+        const lineX = cellX + (cellWidth - lineWidth) / 2;
         ctx.fillText(line, lineX, headerY);
         headerY += titleLineHeight;
       });
-      currentColumnX += columnWidth;
+    };
+
+    if (report.includeIndexTable) {
+      drawHeaderCell(indexColumnX, indexColumnWidth, wrapText(
+        ctx,
+        headerLabels[0]!,
+        Math.max(20, indexColumnWidth - 8),
+      ));
+    }
+
+    drawHeaderCell(
+      nameColumnX,
+      singleTableNameColumnWidth,
+      wrapText(
+        ctx,
+        "FSC",
+        Math.max(20, singleTableNameColumnWidth - 8),
+      ),
+    );
+
+    singleHeaderLineSets.forEach((lines, index) => {
+      const cellX = metricColumnXsAbsolute[index]!;
+      const contentHeight = lines.length * titleLineHeight;
+      let headerY = headerTop + (singleHeaderRowHeight - contentHeight) / 2 + 10;
+      ctx.fillStyle = secondaryColor;
+      ctx.fillRect(cellX, headerTop, tableWidth, singleHeaderRowHeight);
+      ctx.strokeStyle = "#000000";
+      ctx.strokeRect(cellX, headerTop, tableWidth, singleHeaderRowHeight);
+      ctx.fillStyle = "#ffffff";
+      lines.forEach((line) => {
+        ctx.font = `${line.italic ? "italic " : ""}${columnTitleFont}`;
+        const lineWidth = ctx.measureText(line.text).width;
+        const lineX = cellX + (tableWidth - lineWidth) / 2;
+        ctx.fillText(line.text, lineX, headerY);
+        headerY += titleLineHeight;
+      });
     });
 
     ctx.font = bodyFont;
     orderedRows.forEach((row, rowIndex) => {
       const rowTop = headerTop + singleHeaderRowHeight + rowIndex * rowHeight;
-      ctx.strokeStyle = "#000000";
-      ctx.strokeRect(x, rowTop, singleTableWidth, rowHeight);
-      let cellX = x;
 
       if (report.includeIndexTable) {
-        const indexWidth = columnWidths[0]!;
+        const indexWidth = indexColumnWidth;
+        ctx.strokeStyle = "#000000";
+        ctx.strokeRect(indexColumnX, rowTop, indexWidth, rowHeight);
         ctx.textAlign = "center";
         ctx.fillStyle = "#0f172a";
-        ctx.fillText(String(rowIndex + 1), cellX + indexWidth / 2, rowTop + 16);
-        cellX += indexWidth;
+        ctx.fillText(String(rowIndex + 1), indexColumnX + indexWidth / 2, rowTop + 16);
       }
 
+      ctx.strokeStyle = "#000000";
+      ctx.strokeRect(nameColumnX, rowTop, singleTableNameColumnWidth, rowHeight);
       ctx.textAlign = "left";
       ctx.fillStyle = "#0f172a";
-      ctx.fillText(row.name, cellX + 4, rowTop + 16);
-      cellX += singleTableNameColumnWidth;
+      ctx.fillText(row.name, nameColumnX + 4, rowTop + 16);
 
-      singleTableColumns.forEach((table) => {
-        const columnWidth = tableWidth;
+      singleTableColumns.forEach((table, index) => {
+        const cellX = metricColumnXsAbsolute[index]!;
         const value = valueMaps.get(table.id)?.get(row.key) ?? 0;
         if (
           table.highlightMin &&
           value >= (table.minValue ?? 0)
         ) {
           ctx.fillStyle = hitRowColor;
-          ctx.fillRect(cellX, rowTop, columnWidth, rowHeight);
+          ctx.fillRect(cellX, rowTop, tableWidth, rowHeight);
         }
         ctx.strokeStyle = "#000000";
-        ctx.strokeRect(cellX, rowTop, columnWidth, rowHeight);
+        ctx.strokeRect(cellX, rowTop, tableWidth, rowHeight);
         ctx.fillStyle = "#0f172a";
         ctx.textAlign = "right";
         ctx.fillText(
           formatValue(value, formatForMetric(table.metric?.type || "countClosings")),
-          cellX + columnWidth - 4,
+          cellX + tableWidth - 4,
           rowTop + 16,
         );
-        cellX += columnWidth;
       });
 
       ctx.textAlign = "left";
@@ -580,20 +802,24 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
 
     if (hasFooterTotals) {
       const footerTop = headerTop + singleHeaderRowHeight + rowCount * rowHeight;
-      ctx.fillStyle = secondaryColor;
-      ctx.fillRect(x, footerTop, singleTableWidth, rowHeight);
-      ctx.strokeStyle = "#000000";
-      ctx.strokeRect(x, footerTop, singleTableWidth, rowHeight);
-      let cellX = x;
       if (report.includeIndexTable) {
-        cellX += columnWidths[0]!;
+        ctx.fillStyle = secondaryColor;
+        ctx.fillRect(indexColumnX, footerTop, indexColumnWidth, rowHeight);
+        ctx.strokeStyle = "#000000";
+        ctx.strokeRect(indexColumnX, footerTop, indexColumnWidth, rowHeight);
       }
+      ctx.fillStyle = secondaryColor;
+      ctx.fillRect(nameColumnX, footerTop, singleTableNameColumnWidth, rowHeight);
+      ctx.strokeStyle = "#000000";
+      ctx.strokeRect(nameColumnX, footerTop, singleTableNameColumnWidth, rowHeight);
       ctx.fillStyle = "#ffffff";
       ctx.font = footerTotalFont;
       ctx.textAlign = "left";
-      ctx.fillText("Total", cellX + 4, footerTop + 16);
-      cellX += singleTableNameColumnWidth;
-      singleTableColumns.forEach((table) => {
+      ctx.fillText("Total", nameColumnX + 4, footerTop + 16);
+      singleTableColumns.forEach((table, index) => {
+        const cellX = metricColumnXsAbsolute[index]!;
+        ctx.fillStyle = secondaryColor;
+        ctx.fillRect(cellX, footerTop, tableWidth, rowHeight);
         ctx.strokeStyle = "#000000";
         ctx.strokeRect(cellX, footerTop, tableWidth, rowHeight);
         if (table.includeFooterTotalRow) {
@@ -608,7 +834,6 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
             footerTop + 16,
           );
         }
-        cellX += tableWidth;
       });
       ctx.textAlign = "left";
     }
@@ -657,7 +882,7 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
     const activeTableWidth = tableWidthFor(table);
     const collapseRows = table.rookieFilter === "rookies" && table.includeAllAdvisors === false;
     const rowCount = collapseRows ? Math.max(1, table.rows.length) : maxRows;
-    const titleLines = table.titleLines ?? [];
+    const titleLines = getRenderedTitleLines(table.titleLines);
     const tableTitleBlockHeight = maxTitleBlockHeight;
     const tableHeight =
       tableTitleBlockHeight +
@@ -675,19 +900,17 @@ export function buildReportCanvas(options: BuildReportCanvasOptions) {
     ctx.font = "600 12px \"Aptos Narrow\", sans-serif";
     const titleBlockHeight = tableTitleBlockHeight;
     const titleOffset = ((maxTitleLines - titleLines.length) * titleLineHeight) / 2;
-    let titleY = y + titlePadding + 10 + titleOffset;
+    let titleY = y + titleTextBaselineInset + titleOffset;
     ctx.fillStyle = primaryColor;
     ctx.fillRect(x, y, activeTableWidth, titleBlockHeight);
     ctx.strokeStyle = "#000000";
     ctx.strokeRect(x, y, activeTableWidth, titleBlockHeight);
     ctx.fillStyle = "#ffffff";
-    titleLines.forEach((rawLine, lineIndex) => {
-      const isLastLine = lineIndex === titleLines.length - 1;
-      const line = isLastLine ? stripBrackets(rawLine) : rawLine;
-      ctx.font = `${isLastLine ? "italic " : ""}600 12px \"Aptos Narrow\", sans-serif`;
-      const lineWidth = ctx.measureText(line).width;
+    titleLines.forEach((line) => {
+      ctx.font = `${line.italic ? "italic " : ""}600 12px \"Aptos Narrow\", sans-serif`;
+      const lineWidth = ctx.measureText(line.text).width;
       const lineX = x + (activeTableWidth - lineWidth) / 2;
-      ctx.fillText(line, lineX, titleY);
+      ctx.fillText(line.text, lineX, titleY);
       titleY += titleLineHeight;
     });
 

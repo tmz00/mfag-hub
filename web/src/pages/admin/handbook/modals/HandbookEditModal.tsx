@@ -24,6 +24,8 @@ type Props = {
 };
 
 export const HandbookEditModal: Component<Props> = (props) => {
+  let imageInputRef: HTMLInputElement | undefined;
+
   return (
     <EditModal
       title={props.title}
@@ -76,14 +78,24 @@ export const HandbookEditModal: Component<Props> = (props) => {
           <div class="mt-2 space-y-3">
             <div class="flex items-center gap-3">
               <input
+                ref={imageInputRef}
                 type="file"
                 accept="image/*"
                 onChange={props.onImageUpload}
                 disabled={props.saving || props.uploadingImage}
-                class="block w-full text-base text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-base file:font-semibold file:text-primary hover:file:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                class="hidden"
               />
               <Button
-                variant="secondary"
+                type="button"
+                variant="admin"
+                size="sm"
+                onClick={() => imageInputRef?.click()}
+                disabled={props.saving || props.uploadingImage}
+              >
+                Choose file
+              </Button>
+              <Button
+                variant="adminOutline"
                 size="sm"
                 onClick={props.onRemoveImage}
                 disabled={props.saving || !props.draft.imageUrl || props.uploadingImage}
@@ -103,12 +115,19 @@ export const HandbookEditModal: Component<Props> = (props) => {
               </div>
             </Show>
             <Show when={props.draft.imageUrl}>
-              <div class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+              <div class="relative h-40 overflow-hidden rounded-lg border border-gray-200 bg-gray-900 text-white">
                 <AuthenticatedImage
                   src={props.draft.imageUrl}
                   alt="Category preview"
-                  class="h-40 w-full object-cover"
+                  class="absolute inset-0 h-full w-full object-cover"
                 />
+                <div class="absolute inset-0 overflow-hidden bg-linear-to-br from-primary-950 via-primary-800 to-secondary-700 opacity-45">
+                  <div class="absolute -left-6 top-3 h-20 w-20 rounded-full bg-secondary-300/20 blur-2xl" />
+                  <div class="absolute -right-5 top-1/4 h-24 w-24 rounded-full bg-white/12 blur-2xl" />
+                  <div class="absolute -bottom-7 left-1/3 h-28 w-28 rounded-full bg-secondary-200/12 blur-2xl" />
+                </div>
+                <div class="absolute inset-0 bg-primary/40 mix-blend-multiply" />
+                <div class="absolute inset-0 bg-linear-to-t from-black/50 via-black/10 to-transparent" />
               </div>
             </Show>
           </div>

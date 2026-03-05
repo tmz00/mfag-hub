@@ -22,18 +22,103 @@ type HandbookEditorProps = {
   onUploadStatusChange?: (count: number) => void;
 };
 
+const normalizeSpacerText = (value: string): string =>
+  value
+    .replace(/[\u200B\u200C\u200D\u2060\uFEFF]/g, "")
+    .replace(/\u00a0/g, " ")
+    .trim();
+
+const normalizeSupportedHeadingTags = (container: ParentNode) => {
+  container.querySelectorAll("h1").forEach((heading) => {
+    const replacement = document.createElement("h2");
+    Array.from(heading.attributes).forEach((attr) => {
+      replacement.setAttribute(attr.name, attr.value);
+    });
+    while (heading.firstChild) {
+      replacement.appendChild(heading.firstChild);
+    }
+    heading.replaceWith(replacement);
+  });
+};
+
+const normalizeSupportedHeadingTagsHtml = (html: string): string => {
+  if (!html || typeof document === "undefined") return html;
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  normalizeSupportedHeadingTags(container);
+  return container.innerHTML;
+};
+
+const hasMeaningfulContent = (node: Node | null): boolean => {
+  if (!node) return false;
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    return normalizeSpacerText(node.textContent || "") !== "";
+  }
+
+  if (!(node instanceof Element)) return false;
+  if (node instanceof HTMLBRElement) return false;
+
+  if (
+    node instanceof HTMLImageElement
+    || node instanceof HTMLVideoElement
+    || node instanceof HTMLIFrameElement
+    || node instanceof HTMLHRElement
+    || node instanceof HTMLTableElement
+    || node instanceof HTMLCanvasElement
+    || node instanceof HTMLAudioElement
+    || node instanceof HTMLEmbedElement
+    || node instanceof HTMLObjectElement
+    || node instanceof HTMLInputElement
+  ) {
+    return true;
+  }
+
+  if (node instanceof SVGElement) {
+    return true;
+  }
+
+  return Array.from(node.childNodes).some((child) => hasMeaningfulContent(child));
+};
+
 const isWhitespaceTextNode = (node: Node | null): node is Text =>
   !!node &&
   node.nodeType === Node.TEXT_NODE &&
-  !(node.textContent || "").trim();
+  !normalizeSpacerText(node.textContent || "");
 
 const isBlankParagraph = (node: Node | null): node is HTMLParagraphElement => {
   if (!(node instanceof HTMLParagraphElement)) return false;
-  const clone = node.cloneNode(true) as HTMLParagraphElement;
-  clone.querySelectorAll("br").forEach((br) => br.remove());
-  const hasVisibleElements = !!clone.querySelector("*");
-  const text = (clone.textContent || "").replace(/\u00a0/g, "").trim();
-  return !hasVisibleElements && text === "";
+  return !Array.from(node.childNodes).some((child) => hasMeaningfulContent(child));
+};
+
+const EMPTY_INLINE_SELECTOR = [
+  "a",
+  "span",
+  "b",
+  "strong",
+  "i",
+  "em",
+  "u",
+  "s",
+  "mark",
+  "small",
+  "sub",
+  "sup",
+  "code",
+].join(",");
+
+const pruneEmptyInlineNodes = (container: HTMLElement): boolean => {
+  let changed = false;
+
+  Array.from(container.querySelectorAll<HTMLElement>(EMPTY_INLINE_SELECTOR))
+    .reverse()
+    .forEach((node) => {
+      if (hasMeaningfulContent(node)) return;
+      node.remove();
+      changed = true;
+    });
+
+  return changed;
 };
 
 const previousNonSpacerSibling = (node: Node | null): Node | null => {
@@ -60,7 +145,51 @@ const nextNonSpacerSibling = (node: Node | null): Node | null => {
   return null;
 };
 
-const removeBlankParagraphsBetweenSections = (
+const isStandaloneMediaParagraph = (node: Node | null): node is HTMLParagraphElement => {
+  if (!(node instanceof HTMLParagraphElement)) return false;
+  const clone = node.cloneNode(true) as HTMLParagraphElement;
+  clone.querySelectorAll("br").forEach((br) => br.remove());
+  const text = (clone.textContent || "").replace(/\u00a0/g, "").trim();
+  if (text !== "") return false;
+
+  const children = Array.from(clone.children);
+  if (children.length !== 1) return false;
+
+  const [onlyChild] = children;
+  return (
+    onlyChild instanceof HTMLImageElement
+    || onlyChild instanceof HTMLVideoElement
+    || (
+      onlyChild instanceof HTMLIFrameElement
+      && onlyChild.classList.contains("ql-video")
+    )
+  );
+};
+
+const isStandaloneMediaNode = (node: Node | null): node is HTMLElement => {
+  if (
+    node instanceof HTMLImageElement
+    || node instanceof HTMLVideoElement
+  ) {
+    return true;
+  }
+
+  return node instanceof HTMLIFrameElement && node.classList.contains("ql-video");
+};
+
+const isSpacingSensitiveSection = (
+  node: Node | null,
+  sectionSelector: string,
+): node is HTMLElement => {
+  if (!(node instanceof HTMLElement)) return false;
+  return (
+    node.matches(sectionSelector)
+    || isStandaloneMediaParagraph(node)
+    || isStandaloneMediaNode(node)
+  );
+};
+
+const removeBlankParagraphsNearSections = (
   container: HTMLElement,
   sectionSelector: string,
 ) => {
@@ -70,14 +199,72 @@ const removeBlankParagraphsBetweenSections = (
     const prev = previousNonSpacerSibling(paragraph);
     const next = nextNonSpacerSibling(paragraph);
     if (
-      prev instanceof HTMLElement &&
-      next instanceof HTMLElement &&
-      prev.matches(sectionSelector) &&
-      next.matches(sectionSelector)
+      isSpacingSensitiveSection(prev, sectionSelector)
+      || isSpacingSensitiveSection(next, sectionSelector)
     ) {
       paragraph.remove();
     }
   });
+};
+
+const removeLeadingAndTrailingSpacerNodes = (container: HTMLElement): boolean => {
+  let changed = false;
+
+  const trimFromStart = () => {
+    while (container.firstChild) {
+      const first = container.firstChild;
+      if (isWhitespaceTextNode(first) || isBlankParagraph(first)) {
+        first.remove();
+        changed = true;
+        continue;
+      }
+      break;
+    }
+  };
+
+  const trimFromEnd = () => {
+    while (container.lastChild) {
+      const last = container.lastChild;
+      if (isWhitespaceTextNode(last) || isBlankParagraph(last)) {
+        last.remove();
+        changed = true;
+        continue;
+      }
+      break;
+    }
+  };
+
+  trimFromStart();
+  trimFromEnd();
+  return changed;
+};
+
+const normalizeDetailsContentContainer = (container: HTMLElement): boolean => {
+  const before = container.innerHTML;
+  pruneEmptyInlineNodes(container);
+  removeLeadingAndTrailingSpacerNodes(container);
+  removeBlankParagraphsNearSections(container, ".ql-details-block");
+  return container.innerHTML !== before;
+};
+
+const normalizeDetailsContentHtml = (html: string): string => {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  normalizeDetailsContentContainer(container);
+  return container.innerHTML;
+};
+
+const normalizeRenderedDetailsContent = (root: ParentNode): boolean => {
+  let changed = false;
+
+  root.querySelectorAll<HTMLElement>(".ql-details-content").forEach((contentEl) => {
+    if (!normalizeDetailsContentContainer(contentEl)) return;
+    changed = true;
+    const block = contentEl.closest(".ql-details-block") as HTMLElement | null;
+    if (block) block.dataset.content = contentEl.innerHTML || "";
+  });
+
+  return changed;
 };
 
 /** Convert <details><summary>Q</summary>A</details> → embed divs for Quill */
@@ -89,7 +276,7 @@ function detailsHtmlToEmbeds(html: string): string {
     const summaryHtml = summary?.innerHTML || "";
     const isOpen = details.hasAttribute("open");
     summary?.remove();
-    const content = details.innerHTML.trim();
+    const content = normalizeDetailsContentHtml(details.innerHTML);
 
     const embed = document.createElement("div");
     embed.className = "ql-details-block";
@@ -111,7 +298,7 @@ function detailsHtmlToEmbeds(html: string): string {
     img.setAttribute(HANDBOOK_IMAGE_SOURCE_ATTR, source);
     img.removeAttribute("src");
   });
-  removeBlankParagraphsBetweenSections(container, ".ql-details-block");
+  removeBlankParagraphsNearSections(container, ".ql-details-block");
   return container.innerHTML;
 }
 
@@ -124,7 +311,9 @@ function embedsToDetailsHtml(html: string): string {
     const summaryEl = node.querySelector(".ql-details-summary") as HTMLElement | null;
     const contentEl = node.querySelector(".ql-details-content") as HTMLElement | null;
     const summary = summaryEl?.innerHTML || node.dataset.summary || "";
-    const content = contentEl?.innerHTML || node.dataset.content || "";
+    const content = normalizeDetailsContentHtml(
+      contentEl?.innerHTML || node.dataset.content || "",
+    );
     const isCollapsed =
       node.dataset.collapsed === "true" ||
       node.classList.contains("is-collapsed");
@@ -141,7 +330,7 @@ function embedsToDetailsHtml(html: string): string {
 
     el.replaceWith(details);
   });
-  removeBlankParagraphsBetweenSections(container, "details");
+  removeBlankParagraphsNearSections(container, "details");
   return container.innerHTML;
 }
 
@@ -156,6 +345,7 @@ const getPersistedImageSource = (img: HTMLImageElement): string =>
 
 const buildPersistedEditorHtml = (root: HTMLElement): string => {
   const clone = root.cloneNode(true) as HTMLElement;
+  normalizeSupportedHeadingTags(clone);
   clone.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
     const source = getPersistedImageSource(img);
     if (source) {
@@ -166,7 +356,54 @@ const buildPersistedEditorHtml = (root: HTMLElement): string => {
     img.removeAttribute(HANDBOOK_IMAGE_SOURCE_ATTR);
   });
 
+  normalizeRenderedDetailsContent(clone);
+  removeBlankParagraphsNearSections(clone, ".ql-details-block");
+
   return clone.innerHTML || "";
+};
+
+const removeQuillSpacerLinesNearSections = (
+  quill: Quill,
+  sectionSelector: string,
+): boolean => {
+  const deletions: Array<{ index: number; length: number }> = [];
+
+  (quill.getLines() as Array<any>).forEach((line) => {
+    const node = line?.domNode;
+    if (!(node instanceof HTMLParagraphElement)) return;
+    if (!isBlankParagraph(node)) return;
+
+    const prev = previousNonSpacerSibling(node);
+    const next = nextNonSpacerSibling(node);
+    if (
+      !isSpacingSensitiveSection(prev, sectionSelector)
+      && !isSpacingSensitiveSection(next, sectionSelector)
+    ) {
+      return;
+    }
+
+    const index = quill.getIndex(line);
+    const length =
+      typeof line?.length === "function"
+        ? Number(line.length())
+        : 0;
+
+    if (!Number.isFinite(index) || index < 0 || !Number.isFinite(length) || length <= 0) {
+      return;
+    }
+
+    deletions.push({ index, length });
+  });
+
+  if (deletions.length === 0) return false;
+
+  deletions
+    .sort((a, b) => b.index - a.index)
+    .forEach(({ index, length }) => {
+      quill.deleteText(index, length, Quill.sources.SILENT);
+    });
+
+  return true;
 };
 
 export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
@@ -432,8 +669,7 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
         return;
       }
       quillInstance.insertEmbed(range.index, "image", file.url, Quill.sources.USER);
-      quillInstance.insertText(range.index + 1, "\n", Quill.sources.USER);
-      quillInstance.setSelection(range.index + 2, 0, Quill.sources.USER);
+      quillInstance.setSelection(range.index + 1, 0, Quill.sources.USER);
       requestAnimationFrame(() => {
         if (quillInstance?.root) {
           syncProtectedImagePreviews(quillInstance.root);
@@ -444,8 +680,7 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
     if (file.contentType.startsWith("video/")) {
       if (mode === "embed") {
         quillInstance.insertEmbed(range.index, "video", file.url, Quill.sources.USER);
-        quillInstance.insertText(range.index + 1, "\n", Quill.sources.USER);
-        quillInstance.setSelection(range.index + 2, 0, Quill.sources.USER);
+        quillInstance.setSelection(range.index + 1, 0, Quill.sources.USER);
         return;
       }
       quillInstance.insertText(
@@ -815,13 +1050,347 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
       });
     };
 
+    const focusEditableEnd = (editableEl: HTMLElement) => {
+      const placeCaretAtEnd = () => {
+        if (!editableEl.isConnected) return;
+        editableEl.focus();
+        const sel = window.getSelection();
+        if (!sel) return;
+
+        const range = document.createRange();
+        let targetNode: Node = editableEl;
+        while (targetNode.lastChild) {
+          targetNode = targetNode.lastChild;
+        }
+
+        if (targetNode.nodeType === Node.TEXT_NODE) {
+          range.setStart(
+            targetNode,
+            (targetNode.textContent || "").length,
+          );
+        } else if (targetNode instanceof HTMLBRElement) {
+          range.setStartAfter(targetNode);
+        } else if (targetNode instanceof HTMLElement) {
+          range.selectNodeContents(targetNode);
+          range.collapse(false);
+        } else {
+          range.selectNodeContents(editableEl);
+          range.collapse(false);
+        }
+
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        lastDetailsEditable = editableEl;
+        lastDetailsSelection = range.cloneRange();
+        lastDetailsSelectionAt = Date.now();
+      };
+
+      placeCaretAtEnd();
+      requestAnimationFrame(placeCaretAtEnd);
+    };
+
     const focusSummaryEnd = (summaryEl: HTMLElement) => {
-      summaryEl.focus();
+      focusEditableEnd(summaryEl);
+    };
+
+    const focusEditableAtPoint = (
+      editableEl: HTMLElement,
+      clientX: number,
+      clientY: number,
+      fallback: "start" | "end" = "start",
+    ) => {
+      editableEl.focus();
       const sel = window.getSelection();
       if (!sel) return;
-      sel.selectAllChildren(summaryEl);
-      sel.collapseToEnd();
-      lastDetailsEditable = summaryEl;
+
+      let range: Range | null = null;
+      const docWithCaret = document as Document & {
+        caretPositionFromPoint?: (x: number, y: number) => {
+          offsetNode: Node;
+          offset: number;
+        } | null;
+        caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      };
+
+      if (typeof docWithCaret.caretPositionFromPoint === "function") {
+        const caret = docWithCaret.caretPositionFromPoint(clientX, clientY);
+        if (caret && editableEl.contains(caret.offsetNode)) {
+          range = document.createRange();
+          range.setStart(caret.offsetNode, caret.offset);
+        }
+      } else if (typeof docWithCaret.caretRangeFromPoint === "function") {
+        const caretRange = docWithCaret.caretRangeFromPoint(clientX, clientY);
+        if (caretRange && editableEl.contains(caretRange.startContainer)) {
+          range = caretRange.cloneRange();
+        }
+      }
+
+      if (!range) {
+        range = document.createRange();
+        range.selectNodeContents(editableEl);
+        range.collapse(fallback === "start");
+      } else {
+        range.collapse(true);
+      }
+
+      sel.removeAllRanges();
+      sel.addRange(range);
+      lastDetailsEditable = editableEl;
+      lastDetailsSelection = range.cloneRange();
+      lastDetailsSelectionAt = Date.now();
+    };
+
+    const focusSummaryAtColumn = (summaryEl: HTMLElement, clientX: number) => {
+      const rect = summaryEl.getBoundingClientRect();
+      const clientY = rect.top + Math.min(Math.max(1, rect.height - 1), 12);
+      focusEditableAtPoint(summaryEl, clientX, clientY, "end");
+    };
+
+    const focusContentAtColumn = (contentEl: HTMLElement, clientX: number) => {
+      const rect = contentEl.getBoundingClientRect();
+      const clientY = rect.top + Math.min(Math.max(1, rect.height - 1), 12);
+      focusEditableAtPoint(contentEl, clientX, clientY, "start");
+    };
+
+    const focusEditableFirstLineEnd = (editableEl: HTMLElement) => {
+      const rect = editableEl.getBoundingClientRect();
+      const clientY = rect.top + Math.min(Math.max(1, rect.height - 1), 12);
+      const clientX = Math.max(rect.left + 1, rect.right - 1);
+
+      let firstChild: Node | null = editableEl.firstChild;
+      while (firstChild && isWhitespaceTextNode(firstChild)) {
+        firstChild = firstChild.nextSibling;
+      }
+
+      editableEl.focus();
+      const sel = window.getSelection();
+      if (!sel) return;
+
+      let range: Range | null = null;
+      const docWithCaret = document as Document & {
+        caretPositionFromPoint?: (x: number, y: number) => {
+          offsetNode: Node;
+          offset: number;
+        } | null;
+        caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      };
+
+      if (typeof docWithCaret.caretPositionFromPoint === "function") {
+        const caret = docWithCaret.caretPositionFromPoint(clientX, clientY);
+        if (caret && editableEl.contains(caret.offsetNode)) {
+          range = document.createRange();
+          range.setStart(caret.offsetNode, caret.offset);
+        }
+      } else if (typeof docWithCaret.caretRangeFromPoint === "function") {
+        const caretRange = docWithCaret.caretRangeFromPoint(clientX, clientY);
+        if (caretRange && editableEl.contains(caretRange.startContainer)) {
+          range = caretRange.cloneRange();
+        }
+      }
+
+      if (!range) {
+        range = document.createRange();
+        if (firstChild?.nodeType === Node.TEXT_NODE) {
+          range.setStart(firstChild, (firstChild.textContent || "").length);
+        } else if (firstChild instanceof HTMLBRElement) {
+          range.setStartAfter(firstChild);
+        } else if (firstChild instanceof HTMLElement) {
+          range.selectNodeContents(firstChild);
+          range.collapse(false);
+        } else {
+          range.selectNodeContents(editableEl);
+          range.collapse(false);
+        }
+      } else {
+        range.collapse(true);
+      }
+
+      sel.removeAllRanges();
+      sel.addRange(range);
+      lastDetailsEditable = editableEl;
+      lastDetailsSelection = range.cloneRange();
+      lastDetailsSelectionAt = Date.now();
+    };
+
+    const focusQuillLineAtColumn = (line: any, clientX: number) => {
+      const lineEl = line?.domNode instanceof HTMLElement ? line.domNode : null;
+      if (!lineEl || !lineEl.isConnected) return false;
+
+      const lineIndex = quill.getIndex(line);
+      const lineLength =
+        typeof line?.length === "function"
+          ? Math.max(0, Number(line.length()) - 1)
+          : 0;
+      const fallbackIndex = Math.max(0, lineIndex + lineLength);
+      const rect = lineEl.getBoundingClientRect();
+      const clientY = rect.top + Math.min(Math.max(1, rect.height - 1), 12);
+
+      quill.root.focus();
+      const sel = window.getSelection();
+      if (!sel) {
+        quill.setSelection(fallbackIndex, 0, Quill.sources.USER);
+        return true;
+      }
+
+      let range: Range | null = null;
+      const docWithCaret = document as Document & {
+        caretPositionFromPoint?: (x: number, y: number) => {
+          offsetNode: Node;
+          offset: number;
+        } | null;
+        caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      };
+
+      if (typeof docWithCaret.caretPositionFromPoint === "function") {
+        const caret = docWithCaret.caretPositionFromPoint(clientX, clientY);
+        if (caret && quill.root.contains(caret.offsetNode) && lineEl.contains(caret.offsetNode)) {
+          range = document.createRange();
+          range.setStart(caret.offsetNode, caret.offset);
+        }
+      } else if (typeof docWithCaret.caretRangeFromPoint === "function") {
+        const caretRange = docWithCaret.caretRangeFromPoint(clientX, clientY);
+        if (
+          caretRange
+          && quill.root.contains(caretRange.startContainer)
+          && lineEl.contains(caretRange.startContainer)
+        ) {
+          range = caretRange.cloneRange();
+        }
+      }
+
+      if (!range) {
+        quill.setSelection(fallbackIndex, 0, Quill.sources.USER);
+        return true;
+      }
+
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    };
+
+    const focusQuillLineEdge = (line: any, edge: "start" | "end") => {
+      if (!line) return false;
+      const lineIndex = quill.getIndex(line);
+      const lineLength =
+        typeof line?.length === "function"
+          ? Math.max(0, Number(line.length()) - 1)
+          : 0;
+      const targetIndex =
+        edge === "start"
+          ? Math.max(0, lineIndex)
+          : Math.max(0, lineIndex + lineLength);
+      quill.setSelection(targetIndex, 0, Quill.sources.USER);
+      quill.focus();
+      return true;
+    };
+
+    const focusEditableLastLineStart = (editableEl: HTMLElement) => {
+      const rect = editableEl.getBoundingClientRect();
+      const clientY = rect.bottom - Math.min(Math.max(1, rect.height - 1), 12);
+      const clientX = rect.left + 1;
+      focusEditableAtPoint(editableEl, clientX, clientY, "start");
+    };
+
+    const focusDetailsVerticalUpStartForEmbedIndex = (embedIndex: number) => {
+      const detailsBlock = Array.from(
+        quill.root.querySelectorAll<HTMLElement>(".ql-details-block"),
+      ).find((candidate) => {
+        const blot = Quill.find(candidate);
+        if (!blot) return false;
+        return quill.getIndex(blot as any) === embedIndex;
+      });
+      if (!detailsBlock) return false;
+
+      const isCollapsed =
+        detailsBlock.classList.contains("is-collapsed") ||
+        detailsBlock.dataset.collapsed === "true";
+      const summary = detailsBlock.querySelector(
+        ".ql-details-summary",
+      ) as HTMLElement | null;
+      const content = detailsBlock.querySelector(
+        ".ql-details-content",
+      ) as HTMLElement | null;
+
+      if (!isCollapsed && content) {
+        focusEditableLastLineStart(content);
+        return true;
+      }
+      if (!summary) return false;
+      focusQuestionStart(summary);
+      return true;
+    };
+
+    const focusDetailsSummaryEdgeForEmbedIndex = (
+      embedIndex: number,
+      edge: "start" | "end",
+    ) => {
+      const detailsBlock = Array.from(
+        quill.root.querySelectorAll<HTMLElement>(".ql-details-block"),
+      ).find((candidate) => {
+        const blot = Quill.find(candidate);
+        if (!blot) return false;
+        return quill.getIndex(blot as any) === embedIndex;
+      });
+      const summary = detailsBlock?.querySelector(
+        ".ql-details-summary",
+      ) as HTMLElement | null;
+      if (!summary) return false;
+      if (edge === "start") {
+        focusQuestionStart(summary);
+      } else {
+        focusSummaryEnd(summary);
+      }
+      return true;
+    };
+
+    const focusDetailsTailForEmbedIndex = (embedIndex: number) => {
+      const detailsBlock = Array.from(
+        quill.root.querySelectorAll<HTMLElement>(".ql-details-block"),
+      ).find((candidate) => {
+        const blot = Quill.find(candidate);
+        if (!blot) return false;
+        return quill.getIndex(blot as any) === embedIndex;
+      });
+      if (!detailsBlock) return false;
+
+      const isCollapsed =
+        detailsBlock.classList.contains("is-collapsed") ||
+        detailsBlock.dataset.collapsed === "true";
+      const summary = detailsBlock?.querySelector(
+        ".ql-details-summary",
+      ) as HTMLElement | null;
+      const content = detailsBlock?.querySelector(
+        ".ql-details-content",
+      ) as HTMLElement | null;
+
+      if (!isCollapsed && content) {
+        focusEditableEnd(content);
+        return true;
+      }
+      if (!summary) return false;
+      focusSummaryEnd(summary);
+      return true;
+    };
+
+    const focusDetailsSummaryAtColumnForEmbedIndex = (
+      embedIndex: number,
+      clientX: number,
+    ) => {
+      const detailsBlock = Array.from(
+        quill.root.querySelectorAll<HTMLElement>(".ql-details-block"),
+      ).find((candidate) => {
+        const blot = Quill.find(candidate);
+        if (!blot) return false;
+        return quill.getIndex(blot as any) === embedIndex;
+      });
+      const summary = detailsBlock?.querySelector(
+        ".ql-details-summary",
+      ) as HTMLElement | null;
+      if (!summary) return false;
+      focusSummaryAtColumn(summary, clientX);
+      return true;
     };
 
     const isVisuallyEmptyLine = (
@@ -912,6 +1481,29 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
       return null;
     };
 
+    const findNextDetailsEmbedIndex = (startIndex: number) => {
+      let i = Math.max(0, startIndex);
+      const length = Math.max(0, quill.getLength());
+      while (i < length) {
+        const delta = quill.getContents(i, 1);
+        const op = delta.ops?.[0];
+        if (!op) return null;
+        if (typeof op.insert === "object") {
+          if ("details-block" in (op.insert as Record<string, unknown>)) {
+            return i;
+          }
+          return null;
+        }
+        const text = String(op.insert || "");
+        if (text === "\n") {
+          i += 1;
+          continue;
+        }
+        return null;
+      }
+      return null;
+    };
+
     const scrollSummaryIntoView = (summaryEl: HTMLElement) => {
       const scrollHost = summaryEl.closest(
         "[data-handbook-editor-scroll-host='true']",
@@ -949,6 +1541,16 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
       const raw = quill.getText(lineIndex, contentLength);
       const normalized = raw.replace(/\u00A0/g, " ").replace(/\u200B/g, "");
       return normalized.trim().length === 0;
+    };
+
+    const getCollapsedSelectionRect = (): DOMRect | null => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      if (rect.width || rect.height) return rect;
+      const rects = range.getClientRects();
+      return rects.length > 0 ? rects[0] : null;
     };
 
     const syncDetailsSelection = () => {
@@ -1025,9 +1627,93 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
 
       // Cursor is outside a Q&A block — check if Backspace/Delete would remove one
       if (!block) {
+        if (e.key === "ArrowDown") {
+          const range = quill.getSelection();
+          if (!range || range.length > 0) return;
+
+          const caretRect = getCollapsedSelectionRect();
+          const [line] = quill.getLine(range.index);
+          const lineEl = line?.domNode instanceof HTMLElement ? line.domNode : null;
+          if (
+            lineEl
+            && caretRect
+            && caretRect.bottom + 4 < lineEl.getBoundingClientRect().bottom
+          ) {
+            e.stopPropagation();
+            return;
+          }
+
+          const nextDetailsIndex = findNextDetailsEmbedIndex(range.index);
+          if (
+            nextDetailsIndex !== null
+            && nextDetailsIndex >= 0
+            && focusDetailsSummaryAtColumnForEmbedIndex(
+              nextDetailsIndex,
+              caretRect?.left ?? 0,
+            )
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }
+
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          const range = quill.getSelection();
+          if (!range || range.length > 0) return;
+
+          let detailsIndex: number | null = null;
+          if (e.key === "ArrowLeft") {
+            if (isDetailsEmbedAt(range.index - 1)) {
+              detailsIndex = range.index - 1;
+            } else {
+              const [line] = quill.getLine(range.index);
+              if (line && quill.getIndex(line) === range.index) {
+                detailsIndex = findPreviousDetailsEmbedIndex(range.index);
+              }
+            }
+          } else {
+            const [line] = quill.getLine(range.index);
+            if (line && quill.getIndex(line) === range.index) {
+              detailsIndex = findPreviousDetailsEmbedIndex(range.index);
+            }
+          }
+
+          if (
+            detailsIndex !== null
+            && detailsIndex >= 0
+            && focusDetailsTailForEmbedIndex(detailsIndex)
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }
+
         if (e.key !== "Backspace" && e.key !== "Delete") return;
         const range = quill.getSelection();
         if (!range || range.length > 0) return;
+
+        if (e.key === "Delete") {
+          const [currentLine] = quill.getLine(range.index);
+          if (currentLine && isWhitespaceOnlyLine(currentLine)) {
+            const lineIndex = quill.getIndex(currentLine);
+            const prevDetailsIndex = findPreviousDetailsEmbedIndex(lineIndex);
+            if (prevDetailsIndex !== null) {
+              e.preventDefault();
+              e.stopPropagation();
+              quill.deleteText(lineIndex, currentLine.length(), Quill.sources.USER);
+              const nextIndex = Math.max(
+                0,
+                Math.min(lineIndex, Math.max(0, quill.getLength() - 1)),
+              );
+              quill.setSelection(nextIndex, 0, Quill.sources.USER);
+              quill.focus();
+              return;
+            }
+          }
+        }
+
         const checkIndex = e.key === "Backspace" ? range.index - 1 : range.index;
         if (checkIndex < 0) return;
         const delta = quill.getContents(checkIndex, 1);
@@ -1201,7 +1887,7 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
         return;
       }
 
-      // Enter in summary → new line after the Q&A block; in content → native newline
+      // Enter in summary moves outside the Q&A block; in content it stays native.
       if (e.key === "Enter") {
         e.stopPropagation();
         const inSummary = target.closest(".ql-details-summary");
@@ -1216,7 +1902,7 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
             block.dataset.collapsed === "true";
 
           // Enter at summary end:
-          // - expanded: go to first line in details and insert a blank line there
+          // - expanded: insert a blank line at the start of the answer
           // - collapsed: insert a blank line after the Q&A block
           if (isCaretAtEnd(summaryEl)) {
             if (!isCollapsed && contentEl) {
@@ -1235,6 +1921,8 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
                 range.collapse(true);
                 sel.removeAllRanges();
                 sel.addRange(range);
+                lastDetailsSelection = range.cloneRange();
+                lastDetailsSelectionAt = Date.now();
               }
               lastDetailsEditable = contentEl;
               handleInput();
@@ -1257,14 +1945,14 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
             if (blot) {
               const index = quill.getIndex(blot as any);
               quill.insertText(index, "\n", Quill.sources.USER);
+              quill.setSelection(index, 0, Quill.sources.USER);
+              quill.focus();
             }
-            focusQuestionStart(inSummary as HTMLElement);
             return;
           }
           const blot = Quill.find(block);
           if (blot) {
             const index = quill.getIndex(blot as any);
-            quill.insertText(index, "\n", Quill.sources.USER);
             quill.setSelection(index, 0, Quill.sources.USER);
             quill.focus();
           }
@@ -1304,61 +1992,171 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
         }
       }
 
+      if (e.key === "ArrowRight" && (inSummary || inContent)) {
+        e.stopPropagation();
+        return;
+      }
+
+      if (e.key === "ArrowLeft" && inContent) {
+        if (!isCaretAtStart(inContent as HTMLElement)) {
+          e.stopPropagation();
+          return;
+        }
+      }
+
       if (e.key === "ArrowDown") {
         if (inSummary && contentEl) {
           const isCollapsed =
             block.classList.contains("is-collapsed") ||
             block.dataset.collapsed === "true";
+          const caretRect = getCollapsedSelectionRect();
           if (isCollapsed && quill) {
+            const blot = Quill.find(block);
+            const blockIndex = blot ? quill.getIndex(blot as any) : -1;
+            const atSummaryEnd = isCaretAtEnd(inSummary as HTMLElement);
+            if (
+              blockIndex >= 0
+              && isDetailsEmbedAt(blockIndex + 1)
+              && (
+                atSummaryEnd
+                  ? focusDetailsSummaryEdgeForEmbedIndex(blockIndex + 1, "end")
+                  : focusDetailsSummaryAtColumnForEmbedIndex(
+                    blockIndex + 1,
+                    caretRect?.left ?? 0,
+                  )
+              )
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+
+            if (blockIndex >= 0) {
+              const [nextLine] = quill.getLine(blockIndex + 1);
+              if (nextLine) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (atSummaryEnd) {
+                  focusQuillLineEdge(nextLine, "end");
+                } else {
+                  focusQuillLineAtColumn(nextLine, caretRect?.left ?? 0);
+                }
+                return;
+              }
+            }
+
             e.preventDefault();
             e.stopPropagation();
-            const blot = Quill.find(block);
             if (blot) {
-              const index = quill.getIndex(blot as any) + 1;
-              quill.setSelection(index, 0, Quill.sources.USER);
+              const nextIndex = quill.getIndex(blot as any) + 1;
+              quill.setSelection(nextIndex, 0, Quill.sources.USER);
               quill.focus();
             }
             return;
           }
           e.preventDefault();
           e.stopPropagation();
-          contentEl.focus();
-          const sel = window.getSelection();
-          if (sel && contentEl.firstChild) {
-            sel.collapse(contentEl.firstChild, 0);
+          if (isCaretAtEnd(inSummary as HTMLElement)) {
+            focusEditableFirstLineEnd(contentEl);
+            return;
           }
+          focusContentAtColumn(
+            contentEl,
+            caretRect?.left ?? contentEl.getBoundingClientRect().left + 1,
+          );
           return;
         }
         // Only jump out of answer block if cursor is on the last line
         if (inContent && quill) {
+          const caretRect = getCollapsedSelectionRect();
           const sel = window.getSelection();
           if (sel && sel.rangeCount > 0) {
-            const caretRect = sel.getRangeAt(0).getBoundingClientRect();
+            const liveCaretRect = sel.getRangeAt(0).getBoundingClientRect();
             const contentRect = (inContent as HTMLElement).getBoundingClientRect();
             // If caret is NOT near the bottom, let browser handle line navigation
-            if (caretRect.bottom + 4 < contentRect.bottom) {
+            if (liveCaretRect.bottom + 4 < contentRect.bottom) {
               e.stopPropagation();
               return;
             }
           }
+
+          const blot = Quill.find(block);
+          const blockIndex = blot ? quill.getIndex(blot as any) : -1;
+          const nextDetailsIndex =
+            blockIndex >= 0 ? findNextDetailsEmbedIndex(blockIndex + 1) : null;
+          if (
+            nextDetailsIndex !== null
+            && nextDetailsIndex >= 0
+            && focusDetailsSummaryAtColumnForEmbedIndex(
+              nextDetailsIndex,
+              caretRect?.left ?? 0,
+            )
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+
           e.preventDefault();
           e.stopPropagation();
-          const blot = Quill.find(block);
           if (blot) {
-            const index = quill.getIndex(blot as any) + 1;
-            quill.setSelection(index, 0, Quill.sources.USER);
+            const nextIndex = quill.getIndex(blot as any) + 1;
+            quill.setSelection(nextIndex, 0, Quill.sources.USER);
             quill.focus();
           }
           return;
         }
       }
 
-      if (e.key === "ArrowUp" && inSummary && quill) {
+      if (e.key === "ArrowLeft" && inSummary && quill) {
+        if (!isCaretAtStart(inSummary as HTMLElement)) {
+          e.stopPropagation();
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         const blot = Quill.find(block);
         if (blot) {
           const index = quill.getIndex(blot as any);
+          const prevDetailsIndex = findPreviousDetailsEmbedIndex(index);
+          if (
+            prevDetailsIndex !== null
+            && prevDetailsIndex >= 0
+            && focusDetailsTailForEmbedIndex(prevDetailsIndex)
+          ) {
+            return;
+          }
+
+          const targetIndex = Math.max(0, index - 1);
+          quill.setSelection(targetIndex, 0, Quill.sources.USER);
+          quill.focus();
+        }
+        return;
+      }
+
+      if (e.key === "ArrowUp" && inSummary && quill) {
+        if (!isCaretAtStart(inSummary as HTMLElement)) {
+          e.stopPropagation();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        const blot = Quill.find(block);
+        if (blot) {
+          const index = quill.getIndex(blot as any);
+          if (index > 0 && isDetailsEmbedAt(index - 1)) {
+            if (focusDetailsVerticalUpStartForEmbedIndex(index - 1)) {
+              return;
+            }
+          }
+
+          if (index > 0) {
+            const [prevLine] = quill.getLine(index - 1);
+            if (prevLine && focusQuillLineEdge(prevLine, "start")) {
+              return;
+            }
+          }
+
           const targetIndex = Math.max(0, index - 1);
           quill.setSelection(targetIndex, 0, Quill.sources.USER);
           quill.focus();
@@ -1382,13 +2180,21 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
       }
 
       if (e.key === "ArrowUp" && inContent) {
+        const caretRect = getCollapsedSelectionRect();
+        const currentLineEl = getCurrentLineElement(inContent as HTMLElement);
+        if (currentLineEl?.previousElementSibling) {
+          e.stopPropagation();
+          return;
+        }
         // Only jump to summary if cursor is on the first line
         const sel = window.getSelection();
         if (sel && sel.rangeCount > 0) {
-          const caretRect = sel.getRangeAt(0).getBoundingClientRect();
-          const contentRect = (inContent as HTMLElement).getBoundingClientRect();
+          const liveCaretRect = sel.getRangeAt(0).getBoundingClientRect();
+          const lineRect = (
+            currentLineEl || (inContent as HTMLElement)
+          ).getBoundingClientRect();
           // If caret is NOT near the top, let browser handle line navigation
-          if (caretRect.top - 4 > contentRect.top) {
+          if (liveCaretRect.top - 4 > lineRect.top) {
             e.stopPropagation();
             return;
           }
@@ -1396,7 +2202,7 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
         if (summaryEl) {
           e.preventDefault();
           e.stopPropagation();
-          focusSummaryEnd(summaryEl);
+          focusSummaryAtColumn(summaryEl, caretRect?.left ?? 0);
           return;
         }
       }
@@ -1507,6 +2313,35 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
       }
     };
 
+    // Intercept clicks on handbook file links (editor + "Visit URL" tooltip) to fetch with auth
+    const handleContainerLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest?.("a") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute("href") || "";
+      if (!isHandbookApiFileUrl(href)) return;
+      e.preventDefault();
+      fetchHandbookFile(href).then(async (res) => {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        // Preserve filename from the ?name= param if present
+        try {
+          const name = new URL(href, location.href).searchParams.get("name");
+          if (name) a.download = name;
+        } catch { /* ignore */ }
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }).catch(() => {
+        window.open(href, "_blank", "noopener,noreferrer");
+      });
+    };
+    containerRef?.addEventListener("click", handleContainerLinkClick, true);
+
     quill.root.addEventListener("paste", handleAnswerPaste, true);
     quill.root.addEventListener("drop", handleAnswerDrop, true);
     quill.root.addEventListener("dragover", handleAnswerDragover, true);
@@ -1519,6 +2354,7 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
     quill.root.addEventListener("keydown", handleKeydown, true);
     document.addEventListener("selectionchange", syncDetailsSelection);
     return () => {
+      containerRef?.removeEventListener("click", handleContainerLinkClick, true);
       quill.root.removeEventListener("paste", handleAnswerPaste, true);
       quill.root.removeEventListener("drop", handleAnswerDrop, true);
       quill.root.removeEventListener("dragover", handleAnswerDragover, true);
@@ -1540,7 +2376,7 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
       modules: {
         toolbar: {
           container: [
-            [{ header: [1, false] }],
+            [{ header: [2, false] }, "blockquote"],
             ["undo", "redo"],
             ["bold", "italic", "underline"],
             [{ list: "ordered" }, { list: "bullet" }],
@@ -1898,13 +2734,16 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
     const inputHtml = props.value || "";
     if (inputHtml === currentDetailsHtml) return;
     currentDetailsHtml = inputHtml;
-    const converted = detailsHtmlToEmbeds(inputHtml);
+    const converted = detailsHtmlToEmbeds(normalizeSupportedHeadingTagsHtml(inputHtml));
     if (quillInstance.root.innerHTML === converted) {
       lastAppliedHtml = buildPersistedEditorHtml(quillInstance.root);
       return;
     }
     isInternalUpdate = true;
     quillInstance.root.innerHTML = converted;
+    quillInstance.update(Quill.sources.SILENT);
+    normalizeRenderedDetailsContent(quillInstance.root);
+    removeQuillSpacerLinesNearSections(quillInstance, ".ql-details-block");
     if (!quillInstance.hasFocus()) {
       quillInstance.setSelection(
         quillInstance.getLength(),
@@ -1912,7 +2751,6 @@ export const HandbookEditor: Component<HandbookEditorProps> = (props) => {
         Quill.sources.SILENT,
       );
     }
-    quillInstance.update(Quill.sources.SILENT);
     syncProtectedImagePreviews(quillInstance.root);
     lastAppliedHtml = buildPersistedEditorHtml(quillInstance.root);
     requestAnimationFrame(() => {

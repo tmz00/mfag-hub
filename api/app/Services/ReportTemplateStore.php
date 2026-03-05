@@ -168,6 +168,8 @@ class ReportTemplateStore
                 self::FILENAME_TEMPLATE_MAX
             );
 
+            $isSingleTable = $this->boolValue($report['singleTable'] ?? null, false);
+
             $normalizedReport = [
                 'id' => $id,
                 'title' => $title !== '' ? $title : (string) $id,
@@ -179,11 +181,12 @@ class ReportTemplateStore
                 'tables' => $this->normalizeTables(
                     is_array($report['tables'] ?? null) ? $report['tables'] : [],
                     $usedTableIds,
-                    $nextTableId
+                    $nextTableId,
+                    $isSingleTable
                 ),
             ];
 
-            if ($this->boolValue($report['singleTable'] ?? null, false)) {
+            if ($isSingleTable) {
                 $normalizedReport['singleTable'] = true;
             }
 
@@ -303,7 +306,8 @@ class ReportTemplateStore
     private function normalizeTables(
         array $tables,
         array &$usedTableIds,
-        int &$nextTableId
+        int &$nextTableId,
+        bool $singleTable = false
     ): array
     {
         $normalized = [];
@@ -364,7 +368,9 @@ class ReportTemplateStore
             $normalizedTable = [
                 'id' => $id,
                 'titleLines' => $titleLines,
-                'valueLabel' => $this->fallbackString($table['valueLabel'] ?? null, 'Value', self::VALUE_LABEL_MAX),
+                'valueLabel' => $singleTable
+                    ? $this->stringValue($table['valueLabel'] ?? null, self::VALUE_LABEL_MAX)
+                    : $this->fallbackString($table['valueLabel'] ?? null, 'Value', self::VALUE_LABEL_MAX),
                 'highlightMin' => $this->boolValue($table['highlightMin'] ?? null, false),
                 'showIndex' => $this->boolValue($table['showIndex'] ?? null, false),
                 'includeAllAgencies' => $this->boolValue($table['includeAllAgencies'] ?? null, true),

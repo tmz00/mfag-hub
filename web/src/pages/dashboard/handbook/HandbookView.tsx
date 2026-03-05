@@ -9,9 +9,9 @@ import {
   onMount,
 } from "solid-js";
 import { useNavigate, useParams, useSearchParams } from "@solidjs/router";
-import { TbOutlineArrowLeft } from "solid-icons/tb";
+import { TbOutlineArrowLeft, TbOutlineSearch } from "solid-icons/tb";
 import { AuthenticatedImage } from "../../../components/AuthenticatedImage";
-import { PageShell, BackToTopFab, LoadingState } from "../../../components/ui";
+import { PageShell, Button, LoadingState } from "../../../components/ui";
 
 import { getHandbookEntries } from "../../../services/handbookContentService";
 import {
@@ -35,11 +35,7 @@ const preserveTextLineBreaks = (html: string): string => {
     "p, li, blockquote, td, th, summary",
   );
   blocks.forEach((block) => {
-    const walker = document.createTreeWalker(
-      block,
-      NodeFilter.SHOW_TEXT,
-      null,
-    );
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null);
     const textNodes: Text[] = [];
     let current = walker.nextNode();
     while (current) {
@@ -78,6 +74,7 @@ const HandbookView: Component = () => {
   const [error, setError] = createSignal("");
   const [fileOpenError, setFileOpenError] = createSignal("");
   const [showStickyHeader, setShowStickyHeader] = createSignal(false);
+  const [showSearchFab, setShowSearchFab] = createSignal(false);
   const [currentSection, setCurrentSection] = createSignal("");
   const [contentEl, setContentEl] = createSignal<HTMLDivElement | null>(null);
   const [sectionList, setSectionList] = createSignal<
@@ -99,8 +96,9 @@ const HandbookView: Component = () => {
   const deepLinkTargetKind = createMemo(() =>
     getSearchParamValue(searchParams.tk).toLowerCase(),
   );
+  const hasSectionHeadings = createMemo(() => sectionList().length > 0);
   const getSectionHeadings = () =>
-    Array.from(contentEl()?.querySelectorAll("h1") || []);
+    Array.from(contentEl()?.querySelectorAll<HTMLHeadingElement>("h2") || []);
 
   const hrefFromLink = (el: HTMLAnchorElement) =>
     (el.getAttribute("href") || "").trim();
@@ -134,7 +132,9 @@ const HandbookView: Component = () => {
     } catch (err) {
       console.error("Failed to open handbook file", err);
       if (requiresAuth) {
-        setFileOpenError("Unable to open this file right now. Please try again.");
+        setFileOpenError(
+          "Unable to open this file right now. Please try again.",
+        );
         return;
       }
 
@@ -148,6 +148,17 @@ const HandbookView: Component = () => {
       return;
     }
     navigate("/");
+  };
+
+  const openCategorySearch = () => {
+    const category = (entry()?.category || "").trim();
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    navigate(
+      category
+        ? `/handbook/search?category=${encodeURIComponent(category)}&replace=1&returnTo=${encodeURIComponent(returnTo)}`
+        : `/handbook/search?replace=1&returnTo=${encodeURIComponent(returnTo)}`,
+      { replace: true },
+    );
   };
 
   onMount(async () => {
@@ -195,6 +206,7 @@ const HandbookView: Component = () => {
         return;
       }
       setShowStickyHeader(stickySentinelRef.getBoundingClientRect().top <= 24);
+      setShowSearchFab(window.scrollY > 280);
       setStickyHeaderHeight(stickyHeaderRef?.offsetHeight || 0);
       if (!currentSection()) {
         const headings = getSectionHeadings();
@@ -285,7 +297,7 @@ const HandbookView: Component = () => {
   });
 
   createEffect(() => {
-    if (!showStickyHeader()) {
+    if (!showStickyHeader() || !hasSectionHeadings()) {
       setShowSectionMenu(false);
     }
   });
@@ -297,10 +309,7 @@ const HandbookView: Component = () => {
     el.querySelectorAll("details").forEach((details) => {
       if (details.querySelector(".details-answer")) return;
       const summary = details.querySelector("summary");
-      if (
-        summary &&
-        !summary.querySelector(":scope > .summary-text")
-      ) {
+      if (summary && !summary.querySelector(":scope > .summary-text")) {
         const textWrapper = document.createElement("span");
         textWrapper.className = "summary-text";
         const summaryChildren = Array.from(summary.childNodes);
@@ -325,8 +334,8 @@ const HandbookView: Component = () => {
     const content = entry()?.content;
     if (!el || !content) return;
     if (
-      typeof window === "undefined"
-      || typeof window.URL?.createObjectURL !== "function"
+      typeof window === "undefined" ||
+      typeof window.URL?.createObjectURL !== "function"
     ) {
       return;
     }
@@ -663,11 +672,7 @@ const HandbookView: Component = () => {
     if (appliedSearchJumpKey === jumpKey) return;
 
     const normalize = (value: string) =>
-      value
-        .replace(/[.…]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .toLowerCase();
+      value.replace(/[.…]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
     const normalizedQuery = normalize(query);
 
     const allCandidates = Array.from(
@@ -860,7 +865,10 @@ const HandbookView: Component = () => {
         const normalizedText = chars.join("").trim();
         if (!normalizedText) return -1;
         const startInNormalized = normalizedText.indexOf(needle);
-        if (startInNormalized < 0 || startInNormalized >= mapToRawIndex.length) {
+        if (
+          startInNormalized < 0 ||
+          startInNormalized >= mapToRawIndex.length
+        ) {
           return -1;
         }
         return mapToRawIndex[startInNormalized];
@@ -882,7 +890,9 @@ const HandbookView: Component = () => {
       };
 
       const preferredMatch = findNodeAndOffset(normalizedPreferred);
-      const fallbackMatch = fallbackTerm ? findNodeAndOffset(fallbackTerm) : undefined;
+      const fallbackMatch = fallbackTerm
+        ? findNodeAndOffset(fallbackTerm)
+        : undefined;
       const target = preferredMatch || fallbackMatch;
       if (!target) return undefined;
 
@@ -961,7 +971,8 @@ const HandbookView: Component = () => {
             24,
         );
         const stickyNudge = 2;
-        const destination = targetTop + sectionHeight - coveredTop + stickyNudge;
+        const destination =
+          targetTop + sectionHeight - coveredTop + stickyNudge;
         window.scrollTo({ top: Math.max(0, destination), behavior });
         return;
       }
@@ -978,7 +989,11 @@ const HandbookView: Component = () => {
         inlineScrollAnchor?.remove();
         inlineScrollAnchor = undefined;
         if (targetKind === "line") {
-          inlineScrollAnchor = createInlineScrollAnchor(match, targetText, query);
+          inlineScrollAnchor = createInlineScrollAnchor(
+            match,
+            targetText,
+            query,
+          );
         }
         clearKeywordHighlight =
           highlightTerms.length > 0 ? applyKeywordHighlight(match) : undefined;
@@ -992,7 +1007,8 @@ const HandbookView: Component = () => {
         }
         mainScrollTimer = window.setTimeout(
           () => {
-            scrollToMatch("smooth");          },
+            scrollToMatch("smooth");
+          },
           willExpand ? 1000 : 500,
         );
 
@@ -1044,103 +1060,122 @@ const HandbookView: Component = () => {
         >
           <div class="relative">
             <div class="relative h-56 w-full overflow-hidden md:h-72">
-              <div class="absolute inset-0 overflow-hidden bg-linear-to-br from-primary-950 via-primary-800 to-secondary-700">
-                <div class="absolute -left-16 top-10 h-56 w-56 rounded-full bg-secondary-300/20 blur-3xl sm:h-72 sm:w-72" />
-                <div class="absolute right-[-3rem] top-1/4 h-64 w-64 rounded-full bg-white/12 blur-3xl sm:h-80 sm:w-80" />
-                <div class="absolute bottom-[-4rem] left-1/3 h-72 w-72 rounded-full bg-secondary-200/12 blur-3xl sm:h-96 sm:w-96" />
-              </div>
               <Show when={entry()?.imageUrl}>
                 <AuthenticatedImage
                   src={entry()!.imageUrl}
                   alt={entry()!.category || "Handbook category"}
-                  class="absolute inset-0 h-full w-full object-cover opacity-80"
+                  class="absolute inset-0 h-full w-full object-cover"
                 />
               </Show>
+              <div
+                class="absolute inset-0 overflow-hidden bg-linear-to-br from-primary-950 via-primary-800 to-secondary-700"
+                classList={{ "opacity-45": !!entry()?.imageUrl }}
+              >
+                <div class="absolute -left-16 top-10 h-56 w-56 rounded-full bg-secondary-300/20 blur-3xl sm:h-72 sm:w-72" />
+                <div class="absolute right-[-3rem] top-1/4 h-64 w-64 rounded-full bg-white/12 blur-3xl sm:h-80 sm:w-80" />
+                <div class="absolute bottom-[-4rem] left-1/3 h-72 w-72 rounded-full bg-secondary-200/12 blur-3xl sm:h-96 sm:w-96" />
+              </div>
               <div class="absolute inset-0 bg-primary/40 mix-blend-multiply" />
               <div class="absolute inset-0 bg-linear-to-t from-black/50 via-black/10 to-transparent" />
-              <button
-                type="button"
-                onClick={handleBack}
-                class="cursor-pointer absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/85 text-gray-700 shadow-sm backdrop-blur transition hover:bg-white"
-                aria-label="Back"
-              >
-                <TbOutlineArrowLeft class="h-5 w-5" />
-              </button>
-              <div class="absolute inset-x-0 bottom-0 px-5 pb-5">
-                <h1 class="text-4xl font-semibold text-white drop-shadow-[0_3px_6px_rgba(0,0,0,0.55)]">
-                  {entry()?.category || "Handbook"}
-                </h1>
+              <div class="absolute inset-0">
+                <div class="mx-auto flex h-full max-w-7xl flex-col px-4 pt-4 pb-5 md:pt-5 md:pb-6">
+                  <div class="flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      class="cursor-pointer flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-primary-700/35 text-white shadow-lg backdrop-blur-md transition hover:bg-primary-700/50"
+                      aria-label="Back"
+                    >
+                      <TbOutlineArrowLeft class="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openCategorySearch}
+                      class="cursor-pointer flex h-10 w-48 shrink-0 items-center gap-2 rounded-full border border-white/20 bg-primary-700/35 px-4 text-left text-sm font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-primary-700/50 sm:w-60"
+                      aria-label="Search this category"
+                    >
+                      <TbOutlineSearch class="h-4 w-4 shrink-0 text-white/80" />
+                      <span class="truncate">Search this category</span>
+                    </button>
+                  </div>
+                  <div class="mt-auto">
+                    <h1 class="text-4xl font-semibold text-white drop-shadow-[0_3px_6px_rgba(0,0,0,0.55)]">
+                      {entry()?.category || "Handbook"}
+                    </h1>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="mx-auto max-w-4xl px-5 pb-[60vh]">
+          <div class="mx-auto max-w-7xl px-4 pb-[60vh]">
             <div ref={stickySentinelRef} class="h-px w-full" />
             <div class="sticky top-0 z-20 h-0">
-              <div
-                data-handbook-sticky-header="true"
-                ref={stickyHeaderRef}
-                class="absolute left-0 right-0 -mx-5 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur transition-all duration-200"
-                classList={{
-                  "pointer-events-none opacity-0 -translate-y-2":
-                    !showStickyHeader(),
-                  "pointer-events-auto opacity-100 translate-y-0":
-                    showStickyHeader(),
-                }}
-              >
-                <div class="relative" ref={setSectionMenuRoot}>
-                  <div class="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleBack}
-                      class="cursor-pointer items-center justify-center rounded-full text-gray-700 hover:bg-gray-100"
-                      aria-label="Back"
-                    >
-                      <TbOutlineArrowLeft class="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      class="flex w-full items-center justify-between gap-1 text-left"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setShowSectionMenu(!showSectionMenu());
-                      }}
-                    >
-                      <h2 class="text-base font-semibold text-gray-900">
-                        {entry()?.category || "Handbook"}
-                        {currentSection() ? ` - ${currentSection()}` : ""}
-                      </h2>
-                      <span
-                        class="text-sm text-primary-700"
-                        aria-label="Sections"
+              <Show when={hasSectionHeadings()}>
+                <div
+                  data-handbook-sticky-header="true"
+                  ref={stickyHeaderRef}
+                  class="absolute left-0 right-0 -mx-4 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur transition-all duration-200"
+                  classList={{
+                    "pointer-events-none opacity-0 -translate-y-2":
+                      !showStickyHeader(),
+                    "pointer-events-auto opacity-100 translate-y-0":
+                      showStickyHeader(),
+                  }}
+                >
+                  <div class="relative" ref={setSectionMenuRoot}>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleBack}
+                        class="cursor-pointer items-center justify-center rounded-full text-gray-700 hover:bg-gray-100"
+                        aria-label="Back"
                       >
+                        <TbOutlineArrowLeft class="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-1 text-left"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setShowSectionMenu(!showSectionMenu());
+                        }}
+                      >
+                        <h2 class="text-base font-semibold text-gray-900">
+                          {currentSection() || "Sections"}
+                        </h2>
                         <span
-                          aria-hidden="true"
-                          class="inline-block transition-transform duration-200"
-                          classList={{ "rotate-180": showSectionMenu() }}
+                          class="text-sm text-primary-700"
+                          aria-label="Sections"
                         >
-                          ▾
+                          <span
+                            aria-hidden="true"
+                            class="inline-block transition-transform duration-200"
+                            classList={{ "rotate-180": showSectionMenu() }}
+                          >
+                            ▾
+                          </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                    </div>
                   </div>
+                  <Show when={showSectionMenu() && sectionList().length > 0}>
+                    <div class="handbook-section-menu">
+                      <For each={sectionList()}>
+                        {(section) => (
+                          <button
+                            type="button"
+                            class="handbook-section-item"
+                            onClick={() => scrollToSection(section.id)}
+                          >
+                            {section.title}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
                 </div>
-                <Show when={showSectionMenu() && sectionList().length > 0}>
-                  <div class="handbook-section-menu">
-                    <For each={sectionList()}>
-                      {(section) => (
-                        <button
-                          type="button"
-                          class="handbook-section-item"
-                          onClick={() => scrollToSection(section.id)}
-                        >
-                          {section.title}
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>{" "}
-              </div>
+              </Show>
             </div>
             <Show when={fileOpenError()}>
               <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1170,7 +1205,18 @@ const HandbookView: Component = () => {
         </Show>
       </Show>
 
-      <BackToTopFab />
+      <Show when={showSearchFab()}>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          onClick={openCategorySearch}
+          class="fixed right-4 bottom-4 z-50 h-11 w-11 rounded-full p-0 shadow-lg"
+          aria-label="Search this category"
+        >
+          <TbOutlineSearch class="h-5 w-5" />
+        </Button>
+      </Show>
     </PageShell>
   );
 };

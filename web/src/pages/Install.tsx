@@ -24,6 +24,7 @@ const Install: Component = () => {
     const ua = navigator.userAgent || "";
     const isIPhone = /iPhone/i.test(ua);
     const isIPod = /iPod/i.test(ua);
+    const isAndroid = /Android/i.test(ua);
     const isIPad =
       /iPad/i.test(ua) ||
       (/Macintosh/i.test(ua) && (navigator as any).maxTouchPoints > 1);
@@ -38,7 +39,7 @@ const Install: Component = () => {
     }
 
     setSelectedPlatform(isIOS ? "ios" : "android");
-    setShowSkipInstallLink(isIPad);
+    setShowSkipInstallLink(isIPad || (!isIPhone && !isIPod && !isAndroid));
   });
 
   const iosShareButtonLocation = () => {

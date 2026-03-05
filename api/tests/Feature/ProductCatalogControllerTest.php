@@ -207,6 +207,7 @@ class ProductCatalogControllerTest extends TestCase
                     'category' => 'Protection',
                     'fullName' => 'New Rider',
                     'shortName' => 'NR',
+                    'attachedSuffix' => '[N]',
                     'type' => 'regular',
                     'frequencies' => ['Annual'],
                     'options' => [
@@ -238,6 +239,7 @@ class ProductCatalogControllerTest extends TestCase
             'id' => 'RIDER-NEW',
             'is_deleted' => false,
             'full_name' => 'New Rider',
+            'attached_suffix' => '[N]',
         ]);
         $this->assertDatabaseHas('products', [
             'id' => 'RIDER-OLD',
@@ -264,6 +266,11 @@ class ProductCatalogControllerTest extends TestCase
         $riderIds = collect($visible->json('riders'))->pluck('id')->all();
         $this->assertSame(['BASE-1'], $baseIds);
         $this->assertSame(['RIDER-NEW'], $riderIds);
+        $visibleRider = collect($visible->json('riders'))->firstWhere('id', 'RIDER-NEW');
+        $this->assertSame(
+            '[N]',
+            is_array($visibleRider) ? ($visibleRider['attachedSuffix'] ?? null) : null
+        );
 
         $history = $this->getJson('/api/backups/snapshots');
         $history->assertOk();

@@ -34,21 +34,24 @@ export const HandbookCategoryGrid: Component<HandbookCategoryGridProps> = (
           {(item) => {
             const content = (
               <>
-                <div class="absolute inset-0 overflow-hidden bg-linear-to-br from-primary-950 via-primary-800 to-secondary-700">
-                  <div class="absolute -left-6 top-3 h-20 w-20 rounded-full bg-secondary-300/20 blur-2xl" />
-                  <div class="absolute -right-5 top-1/4 h-24 w-24 rounded-full bg-white/12 blur-2xl" />
-                  <div class="absolute -bottom-7 left-1/3 h-28 w-28 rounded-full bg-secondary-200/12 blur-2xl" />
-                </div>
                 <Show when={item.imageUrl}>
                   {(url) => (
                     <AuthenticatedImage
                       src={url()}
                       alt={item.label || "Handbook category image"}
-                      class="absolute inset-0 h-full w-full object-cover opacity-80"
+                      class="absolute inset-0 h-full w-full object-cover"
                       loading="lazy"
                     />
                   )}
                 </Show>
+                <div
+                  class="absolute inset-0 overflow-hidden bg-linear-to-br from-primary-950 via-primary-800 to-secondary-700"
+                  classList={{ "opacity-45": !!item.imageUrl }}
+                >
+                  <div class="absolute -left-6 top-3 h-20 w-20 rounded-full bg-secondary-300/20 blur-2xl" />
+                  <div class="absolute -right-5 top-1/4 h-24 w-24 rounded-full bg-white/12 blur-2xl" />
+                  <div class="absolute -bottom-7 left-1/3 h-28 w-28 rounded-full bg-secondary-200/12 blur-2xl" />
+                </div>
                 <div class="absolute inset-0 bg-primary/40 mix-blend-multiply" />
                 <div class="absolute inset-0 bg-linear-to-t from-black/50 via-black/10 to-transparent" />
                 <Show when={props.showEditBadge}>

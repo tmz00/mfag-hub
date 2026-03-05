@@ -33,6 +33,7 @@ export type SelectedProduct = {
   productId: string;
   fullName: string;
   shortName: string;
+  attachedSuffix?: string;
   category?: string;
   type?: string;
   notes?: string;
@@ -155,6 +156,7 @@ const ProductPicker: Component<Props> = (props) => {
       productId: product.id,
       fullName: product.fullName || "",
       shortName: product.shortName || "",
+      attachedSuffix: (product as Rider).attachedSuffix,
       category: product.category,
       type: product.type,
       notes: product.notes,

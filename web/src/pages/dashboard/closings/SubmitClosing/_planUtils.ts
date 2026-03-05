@@ -110,6 +110,7 @@ export const areProductsEqual = (
   if (left.productId !== right.productId) return false;
   if (left.fullName !== right.fullName) return false;
   if (left.shortName !== right.shortName) return false;
+  if ((left.attachedSuffix || "") !== (right.attachedSuffix || "")) return false;
   if (left.category !== right.category) return false;
   if (left.type !== right.type) return false;
   if (left.premiumTermOrIssueAge !== right.premiumTermOrIssueAge) return false;

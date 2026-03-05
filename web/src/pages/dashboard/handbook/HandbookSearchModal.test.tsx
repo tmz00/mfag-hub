@@ -54,6 +54,7 @@ const renderModal = async (props: {
   isOpen?: boolean;
   closeOnResultClick?: boolean;
   renderAsPage?: boolean;
+  initialCategory?: string;
 } = {}) => {
   vi.resetModules();
   const { default: HandbookSearchModal } = await import("./HandbookSearchModal");
@@ -79,7 +80,7 @@ describe("HandbookSearchModal", () => {
     ]);
   });
 
-  it("shows minimum-character guidance before rendering results", async () => {
+  it("stays quiet for short queries before results are eligible", async () => {
     await renderModal();
 
     const searchInput = await screen.findByRole("searchbox");
@@ -87,8 +88,10 @@ describe("HandbookSearchModal", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Type at least 3 characters to see results."),
-      ).toBeTruthy();
+        screen.queryByText("Type at least 3 characters to see results."),
+      ).toBeNull();
+      expect(screen.queryByText("Start typing to search across all handbook categories.")).toBeNull();
+      expect(screen.queryByRole("link")).toBeNull();
     });
   });
 
@@ -128,6 +131,40 @@ describe("HandbookSearchModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("hides recent searches until at least one character is typed", async () => {
+    localStorage.setItem(
+      "dashboard_handbook_recent_searches",
+      JSON.stringify(["illness", "income"]),
+    );
+
+    await renderModal();
+
+    const searchInput = await screen.findByRole("searchbox");
+    expect(screen.queryByText("illness")).toBeNull();
+
+    fireEvent.focus(searchInput);
+    expect(screen.queryByText("illness")).toBeNull();
+
+    fireEvent.input(searchInput, { target: { value: "i" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("illness")).toBeTruthy();
+    });
+  });
+
+  it("does not store recent searches shorter than 3 characters", async () => {
+    const { onClose } = await renderModal();
+
+    const searchInput = await screen.findByRole("searchbox");
+    fireEvent.input(searchInput, { target: { value: "ab" } });
+
+    const backButton = await screen.findByRole("button", { name: /back/i });
+    fireEvent.click(backButton);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem("dashboard_handbook_recent_searches")).toBe("[]");
+  });
+
   it("calls onClose when a result is clicked", async () => {
     const { onClose } = await renderModal();
 
@@ -141,5 +178,27 @@ describe("HandbookSearchModal", () => {
     fireEvent.click(firstResultLink as HTMLAnchorElement);
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports filtering results to a specific category", async () => {
+    await renderModal({ initialCategory: "Protection" });
+
+    const categoryFilter = await screen.findByRole("combobox", {
+      name: /search in/i,
+    });
+    expect((categoryFilter as HTMLSelectElement).value).toBe("Protection");
+
+    const searchInput = await screen.findByRole("searchbox");
+    fireEvent.input(searchInput, { target: { value: "build" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("No matching results.")).toBeTruthy();
+    });
+
+    fireEvent.change(categoryFilter, { target: { value: "Savings" } });
+
+    const resultLinks = await screen.findAllByRole("link", { name: /savings/i });
+    expect(resultLinks.length).toBeGreaterThan(0);
+    expect(resultLinks[0]?.getAttribute("href")).toContain("/handbook/1");
   });
 });
