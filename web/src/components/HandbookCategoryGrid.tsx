@@ -31,7 +31,8 @@ export const HandbookCategoryGrid: Component<HandbookCategoryGridProps> = (
     >
       <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
         <For each={props.items}>
-          {(item) => {
+          {(item, index) => {
+            const eagerLoad = index() < 6;
             const content = (
               <>
                 <Show when={item.imageUrl}>
@@ -40,7 +41,7 @@ export const HandbookCategoryGrid: Component<HandbookCategoryGridProps> = (
                       src={url()}
                       alt={item.label || "Handbook category image"}
                       class="absolute inset-0 h-full w-full object-cover"
-                      loading="lazy"
+                      loading={eagerLoad ? "eager" : "lazy"}
                     />
                   )}
                 </Show>

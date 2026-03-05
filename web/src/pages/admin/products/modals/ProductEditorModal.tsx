@@ -642,7 +642,7 @@ const ProductEditorModal: Component<Props> = (props) => {
                             rider.id,
                             e.currentTarget.value,
                           )}
-                        placeholder="e.g. [N]"
+                        placeholder="e.g. + VH or M2B"
                         class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-admin-from focus:outline-none focus:ring-1 focus:ring-admin-from/40"
                       />
                     </div>
