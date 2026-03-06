@@ -276,7 +276,7 @@ const Dashboard: Component = () => {
               <div class="h-0.5 w-6 rounded-full bg-linear-to-r from-primary to-secondary"></div>
               <h2 class="font-condensed font-bold text-xl">TOOLS</h2>
             </div>
-            <div class="grid grid-cols-2 gap-3 md:items-center">
+            <div class="grid gap-3 lg:grid-cols-2 md:items-center">
               <For each={toolKeys}>
                 {(key) => {
                   const tool = dashboardOptions[key];
