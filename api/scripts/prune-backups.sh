@@ -70,9 +70,19 @@ fi
 ensure_directory "$BACKUP_ROOT"
 
 snapshots=()
+snapshot_list_file="$(mktemp "${TMPDIR:-/tmp}/mfag-snapshots.XXXXXX")"
+trap 'rm -f "$snapshot_list_file"' EXIT
+list_snapshots_desc "$BACKUP_ROOT" > "$snapshot_list_file"
+
 while IFS= read -r snapshot_path; do
+  if [[ -z "$snapshot_path" ]]; then
+    continue
+  fi
   snapshots+=("$snapshot_path")
-done < <(list_snapshots_desc "$BACKUP_ROOT")
+done < "$snapshot_list_file"
+
+rm -f "$snapshot_list_file"
+trap - EXIT
 
 if ((${#snapshots[@]} <= keep_count)); then
   echo "No pruning needed. Snapshots present: ${#snapshots[@]}; retention: $keep_count."
