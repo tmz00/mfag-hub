@@ -1,7 +1,4 @@
-import type {
-  ClosingProduct,
-  ClosingProductQuantityAndPremium,
-} from "../services/closingsService";
+import type { ClosingProduct } from "../services/closingsService";
 import {
   annualizePremiumAmount,
   countInvalidPremiumFrequencyRows,
@@ -18,23 +15,40 @@ export { countInvalidPremiumFrequencyRows };
 
 // ─── FYC ────────────────────────────────────────────────────────────────────
 
+function calculatePremiumRowFyc(
+  premium: number,
+  frequency: string | undefined,
+  fycRate: number,
+  gst: number,
+): number {
+  const collectedPremium = frequency === "Mthly-2" ? premium * 2 : premium;
+  let fyc = collectedPremium * fycRate;
+  if (gst > 0) {
+    fyc /= 1 + gst / 100;
+  }
+  return Math.ceil(fyc) / 100.0;
+}
+
+export function calculateProductSelfFyc(product: ClosingProduct): number {
+  if (product.countsTowardProduction === "N") {
+    return 0;
+  }
+  const gst = product.gst || 0;
+  const fycRate = product.fycRate || 0;
+  let total = 0;
+  for (const qp of product.quantitiesAndPremiums || []) {
+    const quantity = qp.quantity || 0;
+    total +=
+      calculatePremiumRowFyc(qp.premium, qp.frequency, fycRate, gst) * quantity;
+  }
+  return total;
+}
+
 export function calculateProductFyc(product: ClosingProduct): number {
   if (product.countsTowardProduction === "N") {
     return 0;
   }
-  const qps: ClosingProductQuantityAndPremium[] =
-    product.quantitiesAndPremiums || [];
-  let totalPremium = 0;
-  for (const qp of qps) {
-    totalPremium += qp.quantity * qp.premium;
-  }
-
-  let fyc = totalPremium * product.fycRate;
-  if (product.gst > 0) {
-    fyc /= 1 + product.gst / 100;
-  }
-  fyc = Math.ceil(fyc) / 100.0;
-
+  let fyc = calculateProductSelfFyc(product);
   for (const rider of product.riders || []) {
     fyc += calculateProductFyc(rider);
   }

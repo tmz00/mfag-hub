@@ -157,6 +157,20 @@ const buildTemplate = (id: number, title: string, filenameTemplate: string) => (
   tables: [],
 });
 
+const buildMetricTable = (
+  id: number,
+  metric: "fyc" | "afyp",
+  title: string,
+) => ({
+  id,
+  titleLines: [title],
+  valueLabel: metric.toUpperCase(),
+  valueFormat: "currency" as const,
+  includeAllAdvisors: true,
+  includeAllAgencies: true,
+  metric: { type: metric },
+});
+
 const renderExtractReports = async () => {
   const { default: GenerateReports } = await import("./GenerateReports");
   return render(() => <GenerateReports />);
@@ -317,6 +331,97 @@ describe("GenerateReports admin page", () => {
     };
     expect(payload.filename).toBe("20260214_Custom_TOP.pdf");
     expect(payload.reportRangeLabel).toBe("01 Feb 2026 - 14 Feb 2026");
+  });
+
+  it("generates report tables with consistent FYC and AFYP for monthly, GST, and rider cases", async () => {
+    getTeamDataMock.mockResolvedValueOnce({
+      users: [
+        {
+          id: "user-1",
+          nickname: "Alex Tan",
+          fscCode: "A123",
+          agencyCode: "AG01",
+        },
+      ],
+      agencies: [{ code: "AG01", name: "Agency 01" }],
+    });
+    getReportsMock.mockResolvedValueOnce([
+      {
+        ...buildTemplate(1, "Critical Metrics", "{YYYYMMDD}_critical"),
+        includeIndexTable: false,
+        tables: [
+          buildMetricTable(1, "fyc", "FYC"),
+          buildMetricTable(2, "afyp", "AFYP"),
+        ],
+      },
+    ]);
+    getClosingsMock.mockResolvedValueOnce([
+      {
+        id: "closing-1",
+        timestamp: "2026-02-10T09:00:00.000Z",
+        fscCode: "A123",
+        fscName: "Alex Tan",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "prod-alpha",
+            fullName: "Alpha Protector",
+            shortName: "Alpha",
+            fycRate: 10,
+            gst: 9,
+            quantitiesAndPremiums: [
+              { quantity: 1, premium: 109, frequency: "Mthly-1" },
+              { quantity: 1, premium: 109, frequency: "Mthly-2" },
+            ],
+            riders: [
+              {
+                isRider: true,
+                productId: "rider-1",
+                fullName: "Alpha Rider",
+                shortName: "Alpha Rider",
+                fycRate: 5,
+                gst: 0,
+                quantitiesAndPremiums: [
+                  { quantity: 2, premium: 50, frequency: "Annual" },
+                ],
+                riders: [],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    await renderExtractReports();
+    fireEvent.click(screen.getByRole("button", { name: "Generate Reports" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("20260214_critical.pdf")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTitle("Download report"));
+
+    await waitFor(() => {
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = generateReportPdfMock.mock.calls[0]?.[0] as {
+      tables: Array<{
+        metric: { type: string };
+        rows: Array<{ key?: string; value: number }>;
+      }>;
+    };
+    const fycTable = payload.tables.find((table) => table.metric.type === "fyc");
+    const afypTable = payload.tables.find(
+      (table) => table.metric.type === "afyp",
+    );
+    const fycForAlex = fycTable?.rows.find((row) => row.key === "A123")?.value;
+    const afypForAlex = afypTable?.rows.find((row) => row.key === "A123")?.value;
+
+    expect(fycForAlex).toBeCloseTo(35, 6);
+    expect(afypForAlex).toBeCloseTo(2500, 6);
   });
 
   it("lists every source and lets each breakdown section switch metrics", async () => {
@@ -968,6 +1073,149 @@ describe("GenerateReports admin page", () => {
     };
 
     expect(renderArgs.tables[0]?.rows[0]?.value).toBe(500);
+  });
+
+  it("counts nested riders under their base plan product type while standalone riders use their own type", async () => {
+    getTeamDataMock.mockResolvedValueOnce({
+      users: [
+        {
+          fscCode: "A123",
+          nickname: "Alex Tan",
+          agencyCode: "AG01",
+          contractYear: 2024,
+        },
+      ],
+      agencies: [],
+    });
+    getReportsMock.mockResolvedValueOnce([
+      {
+        id: 1,
+        title: "Type Inheritance Report",
+        filenameTemplate: "{YYYYMMDD}_TypeInheritance",
+        tableGap: 15,
+        tableWidth: 170,
+        indexTableWidth: 46,
+        includeIndexTable: false,
+        bottomFootnote: "",
+        tables: [
+          {
+            id: 10,
+            titleLines: ["PROTECTION FYC"],
+            valueLabel: "FYC ($)",
+            highlightMin: false,
+            includeAllAgencies: true,
+            includeAllAdvisors: true,
+            rookieFilter: "all",
+            rookieYears: 2,
+            productTypeKeys: ["protection"],
+            metric: { type: "fyc" },
+          },
+          {
+            id: 11,
+            titleLines: ["SAVINGS FYC"],
+            valueLabel: "FYC ($)",
+            highlightMin: false,
+            includeAllAgencies: true,
+            includeAllAdvisors: true,
+            rookieFilter: "all",
+            rookieYears: 2,
+            productTypeKeys: ["savings"],
+            metric: { type: "fyc" },
+          },
+        ],
+      },
+    ]);
+    getClosingsMock.mockResolvedValueOnce([
+      {
+        id: "closing-1",
+        timestamp: "2026-02-10T09:00:00.000Z",
+        fscCode: "A123",
+        fscName: "Alex Tan",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "P-BASE",
+            fullName: "Base Protection",
+            shortName: "Base",
+            type: "protection",
+            fycRate: 10,
+            gst: 0,
+            quantitiesAndPremiums: [
+              { quantity: 1, premium: 100, frequency: "Annual" },
+            ],
+            riders: [
+              {
+                isRider: true,
+                productId: "R-NESTED",
+                fullName: "Nested Rider Savings",
+                shortName: "Nested Rider",
+                type: "savings",
+                fycRate: 10,
+                gst: 0,
+                quantitiesAndPremiums: [
+                  { quantity: 1, premium: 100, frequency: "Annual" },
+                ],
+                riders: [],
+              },
+            ],
+          },
+          {
+            isRider: true,
+            productId: "R-STANDALONE-SAVINGS",
+            fullName: "Standalone Savings Rider",
+            shortName: "Standalone Savings",
+            type: "savings",
+            fycRate: 10,
+            gst: 0,
+            quantitiesAndPremiums: [
+              { quantity: 1, premium: 100, frequency: "Annual" },
+            ],
+            riders: [],
+          },
+          {
+            isRider: true,
+            productId: "R-STANDALONE-PROTECTION",
+            fullName: "Standalone Protection Rider",
+            shortName: "Standalone Protection",
+            type: "protection",
+            fycRate: 10,
+            gst: 0,
+            quantitiesAndPremiums: [
+              { quantity: 1, premium: 100, frequency: "Annual" },
+            ],
+            riders: [],
+          },
+        ],
+      },
+    ]);
+
+    await renderExtractReports();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate Reports" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("20260214_TypeInheritance.pdf")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTitle("Download report"));
+
+    await vi.waitFor(() => {
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
+    });
+
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
+      tables: Array<{ id: number | string; rows: Array<{ value: number }> }>;
+    };
+
+    const protectionValue = renderArgs.tables.find((table) => table.id === 10)
+      ?.rows[0]?.value;
+    const savingsValue = renderArgs.tables.find((table) => table.id === 11)
+      ?.rows[0]?.value;
+
+    expect(protectionValue).toBe(30);
+    expect(savingsValue).toBe(10);
   });
 
   it("uses case count to total top-level non-rider product quantities and ignores riders", async () => {

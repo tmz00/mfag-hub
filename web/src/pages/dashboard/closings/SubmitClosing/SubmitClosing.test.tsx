@@ -8,6 +8,11 @@ import {
   setFilterMode,
   setSelectedPeriod,
 } from "../_closingsListViewState";
+import type { ClosingProduct } from "../../../../services/closingsService";
+import {
+  calculateProductFyc as calculateSharedProductFyc,
+  calculateProductAfyp as calculateSharedProductAfyp,
+} from "../../../../utils/closingMetrics";
 
 type WrapperProps = {
   children?: JSX.Element;
@@ -277,12 +282,54 @@ vi.mock("./PlansSection", () => ({
 
 import SubmitClosing, {
   applyAttachedSuffixesFromCatalog,
+  calculateProductFYC,
+  calculateProductFYP,
   calculateTotals,
   type ClosingDraft,
   type DraftProduct,
 } from "./SubmitClosing";
 
 describe("SubmitClosing", () => {
+  const toClosingProduct = (
+    draft: DraftProduct,
+    parentRate?: number,
+  ): ClosingProduct => {
+    const effectiveRate = draft.fycRate === -1 ? parentRate || 0 : draft.fycRate;
+    return {
+      isRider: draft.isRider,
+      productId: draft.productId,
+      fullName: draft.fullName,
+      shortName: draft.shortName,
+      type: draft.type,
+      fycRate: effectiveRate,
+      gst: draft.gst ? 9 : 0,
+      quantitiesAndPremiums: (draft.premiumRows || []).map((row) => ({
+        quantity: row.quantity || 1,
+        premium: row.premium,
+        frequency: row.frequency || undefined,
+      })),
+      riders: (draft.riders || []).map((rider) =>
+        toClosingProduct(rider, effectiveRate),
+      ),
+    };
+  };
+
+  const buildDraftProduct = (
+    overrides: Partial<DraftProduct> = {},
+  ): DraftProduct => ({
+    id: "plan-1",
+    isRider: false,
+    productId: "PLAN-1",
+    fullName: "Starter Plan",
+    shortName: "Starter",
+    type: "regular",
+    fycRate: 10,
+    gst: false,
+    premiumRows: [],
+    riders: [],
+    ...overrides,
+  });
+
   beforeAll(() => {
     if (!globalThis.requestAnimationFrame) {
       Object.defineProperty(globalThis, "requestAnimationFrame", {
@@ -392,6 +439,121 @@ describe("SubmitClosing", () => {
       originalFYC: 50,
       originalCaseCount: 2,
     });
+  });
+
+  it("keeps submit helper FYC/AFYP aligned with shared metrics across critical scenarios", () => {
+    const cases: Array<{
+      label: string;
+      product: DraftProduct;
+      expectedFyc: number;
+      expectedAfyp: number;
+    }> = [
+      {
+        label: "Mthly-1 without GST",
+        product: buildDraftProduct({
+          premiumRows: [
+            { id: "row-1", premium: 100, frequency: "Mthly-1", quantity: 1 },
+          ],
+        }),
+        expectedFyc: 10,
+        expectedAfyp: 1200,
+      },
+      {
+        label: "Mthly-2 without GST",
+        product: buildDraftProduct({
+          premiumRows: [
+            { id: "row-1", premium: 100, frequency: "Mthly-2", quantity: 1 },
+          ],
+        }),
+        expectedFyc: 20,
+        expectedAfyp: 1200,
+      },
+      {
+        label: "Annual with GST",
+        product: buildDraftProduct({
+          gst: true,
+          premiumRows: [
+            { id: "row-1", premium: 109, frequency: "Annual", quantity: 1 },
+          ],
+        }),
+        expectedFyc: 10,
+        expectedAfyp: 100,
+      },
+      {
+        label: "Base + rider",
+        product: buildDraftProduct({
+          premiumRows: [
+            { id: "row-1", premium: 100, frequency: "Annual", quantity: 1 },
+          ],
+          riders: [
+            buildDraftProduct({
+              id: "rider-1",
+              isRider: true,
+              productId: "RIDER-1",
+              fullName: "Booster Rider",
+              shortName: "Booster",
+              fycRate: 5,
+              premiumRows: [
+                { id: "rider-row-1", premium: 50, frequency: "Annual", quantity: 2 },
+              ],
+              riders: [],
+            }),
+          ],
+        }),
+        expectedFyc: 15,
+        expectedAfyp: 200,
+      },
+      {
+        label: "Single base + rider uses single multiplier",
+        product: buildDraftProduct({
+          type: "single",
+          premiumRows: [
+            { id: "row-1", premium: 100, frequency: "Annual", quantity: 1 },
+          ],
+          riders: [
+            buildDraftProduct({
+              id: "rider-2",
+              isRider: true,
+              productId: "RIDER-2",
+              fullName: "Single Rider",
+              shortName: "Single Rider",
+              fycRate: 5,
+              premiumRows: [
+                { id: "rider-row-2", premium: 50, frequency: "Annual", quantity: 2 },
+              ],
+              riders: [],
+            }),
+          ],
+        }),
+        expectedFyc: 15,
+        expectedAfyp: 20,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const submitFyc = calculateProductFYC(testCase.product);
+      const submitAfyp = calculateProductFYP(testCase.product);
+      const sharedProduct = toClosingProduct(testCase.product);
+      const sharedFyc = calculateSharedProductFyc(sharedProduct);
+      const sharedAfyp = calculateSharedProductAfyp(sharedProduct);
+
+      expect(submitFyc, `${testCase.label} submit FYC`).toBeCloseTo(
+        testCase.expectedFyc,
+        6,
+      );
+      expect(submitAfyp, `${testCase.label} submit AFYP`).toBeCloseTo(
+        testCase.expectedAfyp,
+        6,
+      );
+      expect(sharedFyc, `${testCase.label} shared FYC`).toBeCloseTo(
+        testCase.expectedFyc,
+        6,
+      );
+      expect(sharedAfyp, `${testCase.label} shared AFYP`).toBeCloseTo(
+        testCase.expectedAfyp,
+        6,
+      );
+    }
   });
 
   it("submits a valid closing with a normalized payload", async () => {

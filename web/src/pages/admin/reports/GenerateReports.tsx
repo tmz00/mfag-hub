@@ -17,7 +17,7 @@ import {
 } from "../../../services/closingsService";
 import {
   annualizePremium,
-  calculateProductFyc,
+  calculateProductSelfFyc,
   calculateClosingFyc,
   calculateProductFyp,
   calculateClosingFyp,
@@ -1066,24 +1066,6 @@ function parseProductKeywords(value?: string): string[] {
     .filter(Boolean);
 }
 
-function calculateProductSelfFyc(product: ClosingProduct): number {
-  if (product.countsTowardProduction === "N") {
-    return 0;
-  }
-
-  let totalPremium = 0;
-  for (const qp of product.quantitiesAndPremiums || []) {
-    totalPremium += qp.quantity * qp.premium;
-  }
-
-  let fyc = totalPremium * product.fycRate;
-  if (product.gst > 0) {
-    fyc /= 1 + product.gst / 100;
-  }
-
-  return Math.ceil(fyc) / 100.0;
-}
-
 function calculateProductSelfFyp(product: ClosingProduct): number {
   if (product.countsTowardProduction === "N") {
     return 0;
@@ -1166,14 +1148,19 @@ function calculateFilteredProductMetrics(
     afyc: 0,
   };
 
-  const visit = (product: ClosingProduct, inheritedFypMultiplier?: number) => {
-    const productTypeKey = (product.type || "").trim();
+  const visit = (
+    product: ClosingProduct,
+    inheritedFypMultiplier?: number,
+    inheritedTypeKey?: string,
+  ) => {
+    const ownTypeKey = (product.type || "").trim();
+    const effectiveTypeKey = inheritedTypeKey || ownTypeKey;
     const effectiveFypMultiplier =
       inheritedFypMultiplier ??
       (product.type?.toLowerCase() === "single" ? 0.1 : 1);
     const matchesType =
       selectedProductTypeKeys.size === 0 ||
-      (productTypeKey !== "" && selectedProductTypeKeys.has(productTypeKey));
+      (effectiveTypeKey !== "" && selectedProductTypeKeys.has(effectiveTypeKey));
     const productSearchText = [
       product.fullName,
       product.shortName,
@@ -1210,7 +1197,7 @@ function calculateFilteredProductMetrics(
     }
 
     (product.riders || []).forEach((rider) =>
-      visit(rider, effectiveFypMultiplier),
+      visit(rider, effectiveFypMultiplier, effectiveTypeKey),
     );
   };
 
