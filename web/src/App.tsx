@@ -92,6 +92,15 @@ const isMobileDevice = () => {
   return isIOS || isIPadOS || isAndroid;
 };
 
+const isStandalonePwa = () => {
+  if (typeof window === "undefined") return false;
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  const displayModeStandalone =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(display-mode: standalone)").matches;
+  return displayModeStandalone || Boolean(nav.standalone);
+};
+
 const PageLoading: Component = () => (
   <div class="flex min-h-dvh items-center justify-center bg-linear-to-b from-gray-50 to-primary/5">
     <div class="flex flex-col items-center gap-3">
@@ -168,7 +177,13 @@ const HomeRedirect: Component<{ authed: () => boolean }> = (props) => {
     <Suspense fallback={<RouteLoadingFallback />}>
       <Show
         when={props.authed()}
-        fallback={isMobileDevice() ? <Install /> : <Navigate href="/login" />}
+        fallback={
+          isMobileDevice() && !isStandalonePwa() ? (
+            <Install />
+          ) : (
+            <Navigate href="/login" />
+          )
+        }
       >
         <Protected>
           <Dashboard />
@@ -578,11 +593,15 @@ const App: Component = () => {
           <Route path="/" component={() => <HomeRedirect authed={authed} />} />
           <Route
             path="/install"
-            component={() => (
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <Install />
-              </Suspense>
-            )}
+            component={() =>
+              isMobileDevice() && !isStandalonePwa() ? (
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Install />
+                </Suspense>
+              ) : (
+                <Navigate href={authed() ? "/" : "/login"} />
+              )
+            }
           />
           <Route
             path="/login"
