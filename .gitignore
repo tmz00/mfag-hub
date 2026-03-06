@@ -1,0 +1,53 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Node and frontend build outputs
+node_modules/
+dist/
+dev-dist/
+coverage/
+.vite/
+
+# Deploy and platform artifacts
+.wrangler/
+.output/
+.vercel/
+.netlify/
+.vinxi/
+app.config.timestamp_*.js
+
+# PHP and Laravel
+vendor/
+public/build/
+bootstrap/cache/*.php
+storage/*.key
+storage/logs/*.log
+storage/framework/cache/data/
+storage/framework/sessions/
+storage/framework/views/
+.phpunit.result.cache
+database/*.sqlite
+
+# Project-local generated data
+backend/migrated_data/
+
+# Local tooling
+.claude/
+.idea/
+.vscode/
+.project
+.classpath
+*.launch
+.settings/
+.git_backup/
+
+# Temp
+ui-debug.log
+
+# System files
+.DS_Store
+Thumbs.db
