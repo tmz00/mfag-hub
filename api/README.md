@@ -2,6 +2,8 @@
 
 This directory contains the PHP Laravel backend that powers MFAG Hub on MySQL, including auth, business APIs, and operational backup tooling.
 
+This repository root is `apps/`. Commands in this README are written either from that root (for example `cd api`) or from inside `api/` where shown.
+
 ## Staging / production runbook
 
 Use this as the operational checklist for deployed environments.
@@ -21,7 +23,7 @@ This keeps local disk usage bounded by pruning older `storage/logs/laravel-*.log
 3. Run Laravel's scheduler every minute from the host OS:
 
 ```bash
-* * * * * cd /path/to/repo/apps/api && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /path/to/repo/api && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 4. The app already defines these scheduled jobs:
@@ -69,7 +71,7 @@ This keeps local disk usage bounded by pruning older `storage/logs/laravel-*.log
 1. Create your local environment file
 
 ```bash
-cd apps/api
+cd api
 cp .env.example .env
 ```
 
@@ -83,7 +85,7 @@ Update `.env` if you want different local database credentials or ports. Docker 
 
 This starts MySQL and Mailpit. If you also want the bundled database UIs, run `docker compose up -d adminer phpmyadmin` and use Adminer at `http://127.0.0.1:8080` or phpMyAdmin at `http://127.0.0.1:8081`.
 
-3. Initialize Laravel core files (skip this in the current repo; only run it if `apps/api/artisan` is missing)
+3. Initialize Laravel core files (skip this in the current repo; only run it if `artisan` is missing)
 
 ```bash
 ./scripts/init-project.sh
@@ -98,7 +100,7 @@ php artisan legacy:import:all
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-4. Verify email flow
+5. Verify email flow
 
 - Request OTP via `POST /api/auth/request-otp`
 - Open Mailpit at `http://127.0.0.1:8025` and copy OTP

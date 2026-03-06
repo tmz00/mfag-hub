@@ -1,10 +1,12 @@
-# MFAG Hub Monorepo
+# MFAG Hub
 
-This repository is a monorepo for MFAG Hub. The frontend lives in `apps/web`: a SolidJS single-page app built with Vite, Tailwind CSS v4, and PWA support.
+![MFAG Hub logo](web/public/images/hub_banner.png)
 
-This README is still intentionally frontend-focused. The PHP Laravel API backend lives in `apps/api`, and any backend behavior referenced here is described only where it affects frontend integration.
+This repository is a monorepo for MFAG Hub. The frontend lives in `web`: a SolidJS single-page app built with Vite, Tailwind CSS v4, and PWA support.
 
-Unless noted otherwise, frontend file paths below are relative to `apps/web/`.
+This README is still intentionally frontend-focused. The PHP Laravel API backend lives in `api`, and any backend behavior referenced here is described only where it affects frontend integration.
+
+This repository root is the `apps/` directory. Unless noted otherwise, paths below are relative to this root.
 
 ## What This App Does
 
@@ -31,29 +33,29 @@ The frontend handles:
 
 The repo is split into two main apps.
 
-- `apps/web/src/`: frontend application code
-- `apps/web/public/`: frontend static assets, icons, push handlers
-- `apps/web/dist/`: frontend production build output
-- `apps/api/`: PHP Laravel backend API server
+- `web/src/`: frontend application code
+- `web/public/`: frontend static assets, icons, push handlers
+- `web/dist/`: frontend production build output
+- `api/`: PHP Laravel backend API server
 
 ## Getting Started
 
 ### Requirements
 
 - Node.js 20+ is recommended
-- `npm` commands are shown in this README (`package-lock.json` is tracked)
+- `npm` commands are shown in this README (`web/package-lock.json` is tracked)
 - `pnpm-lock.yaml` is also checked in from prior dependency maintenance, so either `npm` or `pnpm` will work if you keep the lockfile you use in sync
 
 ### Install
 
 ```bash
-npm --prefix apps/web install
+npm --prefix web install
 ```
 
 ### Run Locally
 
 ```bash
-npm run dev:web
+npm --prefix web run dev
 ```
 
 The dev server runs on `http://localhost:3000`.
@@ -61,13 +63,13 @@ The dev server runs on `http://localhost:3000`.
 ### Production Build
 
 ```bash
-npm run build:web
+npm --prefix web run build
 ```
 
 ### Staging Build
 
 ```bash
-npm --prefix apps/web run build:staging
+npm --prefix web run build:staging
 ```
 
 This runs Vite in `staging` mode and automatically loads `.env.staging`.
@@ -75,19 +77,19 @@ This runs Vite in `staging` mode and automatically loads `.env.staging`.
 ### Preview Production Build
 
 ```bash
-npm --prefix apps/web run serve
+npm --prefix web run serve
 ```
 
 ### Run Frontend Tests
 
 ```bash
-npm run test:web
+npm --prefix web run test
 ```
 
 Watch mode:
 
 ```bash
-npm --prefix apps/web run test:watch
+npm --prefix web run test:watch
 ```
 
 ## Environment and API Integration
@@ -105,8 +107,8 @@ Key environment variables:
 
 The repo already includes example local environment files:
 
-- `apps/web/.env.local`
-- `apps/web/.env.staging`
+- `web/.env.local`
+- `web/.env.staging`
 
 ### Dev Proxy
 
@@ -123,9 +125,9 @@ This avoids local CORS issues and keeps frontend code using relative API paths.
 
 The frontend starts here:
 
-1. `apps/web/src/index.tsx`
-2. `apps/web/src/MaintenanceRoot.tsx`
-3. `apps/web/src/App.tsx`
+1. `web/src/index.tsx`
+2. `web/src/MaintenanceRoot.tsx`
+3. `web/src/App.tsx`
 
 This order is deliberate:
 
@@ -135,7 +137,7 @@ This order is deliberate:
 
 ### Route Layer
 
-`apps/web/src/App.tsx` is the central route and app-shell coordinator.
+`web/src/App.tsx` is the central route and app-shell coordinator.
 
 It owns:
 
@@ -151,23 +153,23 @@ This file is intentionally the global policy layer. Feature pages should not rei
 
 ### Feature Organization
 
-The app is organized primarily by feature area under `apps/web/src/pages/`:
+The app is organized primarily by feature area under `web/src/pages/`:
 
-- `apps/web/src/pages/auth/`
-- `apps/web/src/pages/dashboard/`
-- `apps/web/src/pages/admin/`
+- `web/src/pages/auth/`
+- `web/src/pages/dashboard/`
+- `web/src/pages/admin/`
 
 Reusable UI lives in:
 
-- `apps/web/src/components/ui/`
+- `web/src/components/ui/`
 
 Service modules live in:
 
-- `apps/web/src/services/`
+- `web/src/services/`
 
 Shared utilities live in:
 
-- `apps/web/src/utils/`
+- `web/src/utils/`
 
 ### State Management
 
@@ -179,18 +181,18 @@ Why:
 - Solid signals are simple and fast
 - avoiding a global store keeps data flow easier to reason about
 
-When state must survive intra-feature navigation, the code uses small feature-scoped modules (for example `apps/web/src/pages/dashboard/closings/SubmitClosing/_submitStore.ts`) instead of introducing app-wide state machinery.
+When state must survive intra-feature navigation, the code uses small feature-scoped modules (for example `web/src/pages/dashboard/closings/SubmitClosing/_submitStore.ts`) instead of introducing app-wide state machinery.
 
 ### Service Layer
 
-All API access should go through `apps/web/src/services/*`.
+All API access should go through `web/src/services/*`.
 
 Examples:
 
-- `apps/web/src/services/authService.ts`
-- `apps/web/src/services/closingsService.ts`
-- `apps/web/src/services/productsService.ts`
-- `apps/web/src/services/teamService.ts`
+- `web/src/services/authService.ts`
+- `web/src/services/closingsService.ts`
+- `web/src/services/productsService.ts`
+- `web/src/services/teamService.ts`
 
 Why:
 
@@ -205,7 +207,7 @@ Do not add raw `fetch()` calls directly inside page components unless there is a
 
 The current frontend is API-first.
 
-- `apps/web/src/services/authService.ts` handles OTP request/verification against the backend API
+- `web/src/services/authService.ts` handles OTP request/verification against the backend API
 - access token + refresh token are stored in local storage
 - `authService.onAuthStateChanged(...)` is the frontend subscription model used by the app shell
 - authenticated API requests should use `authJson(...)`
@@ -223,10 +225,10 @@ Relevant behavior:
 
 Key files:
 
-- `apps/web/vite.config.ts`
-- `apps/web/public/push-handlers.js`
-- `apps/web/src/services/pushService.ts`
-- `apps/web/src/App.tsx`
+- `web/vite.config.ts`
+- `web/public/push-handlers.js`
+- `web/src/services/pushService.ts`
+- `web/src/App.tsx`
 
 ## Architectural Decisions
 
@@ -234,7 +236,7 @@ These are the current intentional design choices. Keep them consistent unless th
 
 ### 1. Maintenance Mode Is a Root Wrapper, Not a Route
 
-Maintenance mode lives above the router in `apps/web/src/MaintenanceRoot.tsx`.
+Maintenance mode lives above the router in `web/src/MaintenanceRoot.tsx`.
 
 Why:
 
@@ -253,7 +255,7 @@ Example:
 
 ### 3. Lazy-Loaded Routes for Large Feature Areas
 
-Most major pages are lazy-loaded from `apps/web/src/App.tsx`.
+Most major pages are lazy-loaded from `web/src/App.tsx`.
 
 Why:
 
@@ -263,7 +265,7 @@ Why:
 
 ### 4. Feature-Local Helpers Over Premature Global Abstractions
 
-The codebase uses helper modules like `_planUtils.ts`, `_submitStore.ts`, and `_closingsListViewState.ts` inside feature folders under `apps/web/src/pages/`.
+The codebase uses helper modules like `_planUtils.ts`, `_submitStore.ts`, and `_closingsListViewState.ts` inside feature folders under `web/src/pages/`.
 
 Why:
 
@@ -273,7 +275,7 @@ Why:
 
 ### 5. UI Uses Shared Primitives, Not Per-Page Reinvention
 
-Buttons, modals, alerts, loading states, shells, and other repeated patterns live in `apps/web/src/components/ui/`.
+Buttons, modals, alerts, loading states, shells, and other repeated patterns live in `web/src/components/ui/`.
 
 Why:
 
@@ -283,7 +285,7 @@ Why:
 
 ### 6. Dev Proxy Instead of Hardcoded Dev Hosts in Components
 
-Components and services should use relative API paths. Environment-specific host routing belongs in config, mainly `apps/web/vite.config.ts` and `apps/web/src/services/authService.ts`.
+Components and services should use relative API paths. Environment-specific host routing belongs in config, mainly `web/vite.config.ts` and `web/src/services/authService.ts`.
 
 Why:
 
@@ -295,7 +297,7 @@ Why:
 
 Maintenance mode is controlled entirely in:
 
-- `apps/web/src/config/maintenance.ts`
+- `web/src/config/maintenance.ts`
 
 This file is meant to be the single edit point for scheduling downtime.
 
@@ -333,9 +335,9 @@ ISO timestamps also work if you want to make the timezone explicit.
 
 ### Files Involved
 
-- `apps/web/src/config/maintenance.ts`
-- `apps/web/src/MaintenanceRoot.tsx`
-- `apps/web/src/index.tsx`
+- `web/src/config/maintenance.ts`
+- `web/src/MaintenanceRoot.tsx`
+- `web/src/index.tsx`
 
 ## Common Change Points
 
@@ -343,7 +345,7 @@ These are the files you will most likely edit for common frontend changes.
 
 ### Add or Change Routes
 
-- `apps/web/src/App.tsx`
+- `web/src/App.tsx`
 
 Use this for:
 
@@ -353,7 +355,7 @@ Use this for:
 
 ### Change Theme Tokens / Global Styling
 
-- `apps/web/src/index.css`
+- `web/src/index.css`
 
 Use this for:
 
@@ -364,7 +366,7 @@ Use this for:
 
 ### Change API Payloads or Endpoints
 
-- `apps/web/src/services/*.ts`
+- `web/src/services/*.ts`
 
 Use this for:
 
@@ -375,9 +377,9 @@ Use this for:
 
 ### Change App Name, PWA Manifest, or Icons
 
-- `apps/web/vite.config.ts`
-- `apps/web/public/icons/`
-- `apps/web/index.html`
+- `web/vite.config.ts`
+- `web/public/icons/`
+- `web/index.html`
 
 Use this for:
 
@@ -387,18 +389,18 @@ Use this for:
 
 ### Change Push / Notification Enforcement
 
-- `apps/web/src/App.tsx`
-- `apps/web/src/services/pushService.ts`
-- `apps/web/public/push-handlers.js`
+- `web/src/App.tsx`
+- `web/src/services/pushService.ts`
+- `web/public/push-handlers.js`
 
 ### Change Maintenance Window
 
-- `apps/web/src/config/maintenance.ts`
+- `web/src/config/maintenance.ts`
 
 ## Useful Frontend File Map
 
 ```txt
-apps/web/src/
+web/src/
   index.tsx                       app bootstrap
   MaintenanceRoot.tsx             maintenance gate
   App.tsx                         global app shell and routes
@@ -417,26 +419,26 @@ apps/web/src/
 
 ## Deployment Notes
 
-The frontend is a static build output generated into `apps/web/dist/`.
+The frontend is a static build output generated into `web/dist/`.
 
 Typical flow:
 
 1. set environment variables for the target environment
-2. run `npm run build:web`
-3. deploy the `apps/web/dist/` output to your static hosting target
+2. run `npm --prefix web run build`
+3. deploy the `web/dist/` output to your static hosting target
 
 If backend hostnames differ by environment, confirm:
 
 - `VITE_API_BASE_URL`
 - any proxy assumptions
-- PWA manifest/app name behavior in `apps/web/vite.config.ts`
+- PWA manifest/app name behavior in `web/vite.config.ts`
 
 ## Frontend Guardrails
 
 - Keep backend access inside service modules.
 - Prefer explicit booleans/fields over name-based heuristics.
 - Put app-wide gates in the root layer, not inside individual pages.
-- Reuse `apps/web/src/components/ui/` primitives before adding bespoke duplicated UI.
+- Reuse `web/src/components/ui/` primitives before adding bespoke duplicated UI.
 - For large features, keep helpers near the feature unless they are truly cross-cutting.
 
 ## When Updating This README
