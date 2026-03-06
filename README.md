@@ -1,6 +1,4 @@
-# MFAG Hub
-
-![MFAG Hub logo](web/public/images/hub_banner.png)
+## ![MFAG Hub](web/public/images/hub_banner.png)
 
 This repository is a monorepo for MFAG Hub. The frontend lives in `web`: a SolidJS single-page app built with Vite, Tailwind CSS v4, and PWA support.
 
