@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -487,6 +488,41 @@ class ReportsControllerTest extends TestCase
             'image/',
             (string) $response->headers->get('content-type')
         );
+    }
+
+    public function test_show_logo_falls_back_to_public_html_when_public_logo_is_missing(): void
+    {
+        $viewer = $this->createUser('standard');
+        Sanctum::actingAs($viewer);
+        Storage::fake('local');
+
+        $sourceLogo = public_path('images/mfag_banner.png');
+        $this->assertFileExists($sourceLogo);
+
+        $originalPublicPath = public_path();
+        $tmpBase = storage_path('framework/testing/public-html-logo-fallback-' . uniqid('', true));
+        $tmpPublicPath = $tmpBase . DIRECTORY_SEPARATOR . 'public';
+        $tmpPublicHtmlImagesPath = $tmpBase . DIRECTORY_SEPARATOR . 'public_html' . DIRECTORY_SEPARATOR . 'images';
+
+        File::ensureDirectoryExists($tmpPublicPath);
+        File::ensureDirectoryExists($tmpPublicHtmlImagesPath);
+        File::copy($sourceLogo, $tmpPublicHtmlImagesPath . DIRECTORY_SEPARATOR . 'mfag_banner.png');
+        $this->assertFileDoesNotExist($tmpPublicPath . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'mfag_banner.png');
+
+        $this->app->usePublicPath($tmpPublicPath);
+
+        try {
+            $response = $this->get('/api/reports/logo');
+            $response->assertOk();
+            $this->assertSame('default', $response->headers->get('X-Report-Logo-Source'));
+            $this->assertStringStartsWith(
+                'image/',
+                (string) $response->headers->get('content-type')
+            );
+        } finally {
+            $this->app->usePublicPath($originalPublicPath);
+            File::deleteDirectory($tmpBase);
+        }
     }
 
     public function test_admin_can_upload_show_and_delete_custom_report_logo(): void

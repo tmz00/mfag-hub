@@ -294,8 +294,23 @@ class ReportsController extends Controller
 
     private function defaultLogoAbsolutePath(): ?string
     {
-        $path = public_path('images/mfag_banner.png');
-        return is_file($path) ? $path : null;
+        $relativePath = 'images/mfag_banner.png';
+        $candidates = [
+            public_path($relativePath),
+        ];
+
+        $publicParent = dirname(public_path());
+        if (is_string($publicParent) && trim($publicParent) !== '') {
+            $candidates[] = $publicParent . DIRECTORY_SEPARATOR . 'public_html' . DIRECTORY_SEPARATOR . $relativePath;
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if (is_string($candidate) && is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     private function logoHeadersForPath(

@@ -330,14 +330,11 @@ const PlansSection: Component<Props> = (props) => {
                                       >
                                         {(row) => (
                                           <div>
-                                            ${formatCurrency(row.premium)} /{" "}
+                                            {row.quantity} × $
+                                            {formatCurrency(row.premium)} /{" "}
                                             {formatFrequencySummary(
                                               row.frequency,
                                             )}
-                                            <Show when={row.quantity > 1}>
-                                              {" "}
-                                              × {row.quantity}
-                                            </Show>
                                           </div>
                                         )}
                                       </For>
