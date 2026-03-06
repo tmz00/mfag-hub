@@ -2,12 +2,12 @@
   "name": "mfag-hub",
   "private": true,
   "scripts": {
-    "dev:web": "npm --prefix apps/web run dev",
-    "build:web": "npm --prefix apps/web run build",
-    "test:web": "npm --prefix apps/web run test",
-    "dev:api": "cd apps/api && php artisan serve",
-    "test:api": "cd apps/api && composer test",
-    "dev:api:assets": "npm --prefix apps/api run dev",
-    "build:api:assets": "npm --prefix apps/api run build"
+    "dev:web": "npm --prefix web run dev",
+    "build:web": "npm --prefix web run build",
+    "test:web": "npm --prefix web run test",
+    "dev:api": "cd api && php artisan serve",
+    "test:api": "cd api && composer test",
+    "dev:api:assets": "npm --prefix api run dev",
+    "build:api:assets": "npm --prefix api run build"
   }
 }
