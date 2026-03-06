@@ -44,14 +44,20 @@ const getHandbookSearchHref = () => {
     return "/handbook/search?returnTo=%2F";
   }
 
-  const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}` || "/";
+  const returnTo =
+    `${window.location.pathname}${window.location.search}${window.location.hash}` ||
+    "/";
   return `/handbook/search?returnTo=${encodeURIComponent(returnTo)}`;
 };
 
 const Dashboard: Component = () => {
   const navigate = useNavigate();
 
-  const toolKeys = ["bmi", "delayTax", "compoundEffect"] as const;
+  const toolKeys = [
+    "bmi",
+    "delayTax",
+    "compoundEffect",
+  ] as const;
   const quickAccessKeys = ["closings", "team", "products", "admin"] as const;
 
   const [handbookCategories, setHandbookCategories] = createSignal<
@@ -329,20 +335,20 @@ const Dashboard: Component = () => {
                 <div class="space-y-3">
                   <div class="sticky top-0 z-20 -mx-2 bg-gray-50/95 px-2 py-1 backdrop-blur-sm">
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div class="relative w-full">
-                      <button
-                        type="button"
-                        onPointerDown={preloadHandbookSearch}
-                        onTouchStart={preloadHandbookSearch}
-                        onMouseEnter={preloadHandbookSearch}
-                        onFocus={preloadHandbookSearch}
-                        onClick={() => navigate(getHandbookSearchHref())}
-                        class="flex w-full items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-base text-gray-500 shadow-inner transition hover:bg-white focus:outline-none focus:ring-1 focus:ring-primary/40"
-                      >
-                        <span>Search handbook…</span>
-                        <TbOutlineSearch class="h-4 w-4 text-gray-400" />
-                      </button>
-                    </div>
+                      <div class="relative w-full">
+                        <button
+                          type="button"
+                          onPointerDown={preloadHandbookSearch}
+                          onTouchStart={preloadHandbookSearch}
+                          onMouseEnter={preloadHandbookSearch}
+                          onFocus={preloadHandbookSearch}
+                          onClick={() => navigate(getHandbookSearchHref())}
+                          class="flex w-full items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-base text-gray-500 shadow-inner transition hover:bg-white focus:outline-none focus:ring-1 focus:ring-primary/40"
+                        >
+                          <span>Search handbook…</span>
+                          <TbOutlineSearch class="h-4 w-4 text-gray-400" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 

@@ -12,6 +12,8 @@ class ReportPdfGenerator
     private const DEFAULT_SCALE = 4;
     private const FONT_SIZE_FACTOR = 0.73;
     private const HEADER_ROW_FONT_WEIGHT = 900;
+    private const MIN_PAGE_ASPECT_RATIO = 0.8;
+    private const MAX_PAGE_ASPECT_RATIO = 1.8;
     private const MAX_TABLES = 30;
     private const MAX_ROWS_PER_TABLE = 500;
     private const MAX_ROW_NAME_LENGTH = 80;
@@ -477,59 +479,48 @@ class ReportPdfGenerator
                 : '';
 
             $logo = $this->loadLogo($logoPath);
-            $height = 0.0;
-            $tableTopY = 0.0;
-            $tableBlockHeight = 0.0;
-            $effectiveBottomFootnoteTopPadding = $bottomFootnoteTopPaddingWithoutSiblingFooters;
-            for ($pass = 0; $pass < 3; $pass++) {
-                $singleFootnoteHeight = 0.0;
-                if ($singleFootnoteTexts !== []) {
-                    $lineCount = 0;
-                    $footnoteWrapWidth = max(40, $width - ($pagePadding * 2) - 12);
-                    foreach ($singleFootnoteTexts as $text) {
-                        $lineCount += count($this->wrapText($text, $footnoteWrapWidth, 12, 400, true));
-                    }
-                    $singleFootnoteHeight = $tableFootnoteTopPadding
-                        + $footnoteBottomPadding
-                        + ($lineCount * $footnoteLineHeight);
+            $singleFootnoteHeight = 0.0;
+            if ($singleFootnoteTexts !== []) {
+                $lineCount = 0;
+                $footnoteWrapWidth = max(40, $width - ($pagePadding * 2) - 12);
+                foreach ($singleFootnoteTexts as $text) {
+                    $lineCount += count($this->wrapText($text, $footnoteWrapWidth, 12, 400, true));
                 }
-
-                $tableBlockHeight = $tableHeight + $singleFootnoteHeight;
-                $effectiveBottomFootnoteTopPadding = $singleFootnoteHeight > 0
-                    ? $bottomFootnoteTopPaddingAfterTableFootnotes
-                    : ($hasFooterTotals
-                        ? $bottomFootnoteTopPaddingAfterFooterRows
-                        : $bottomFootnoteTopPaddingWithoutSiblingFooters);
-
-                $bottomFootnoteLineCount = 0;
-                if ($bottomFootnoteText !== '') {
-                    $bottomFootnoteLineCount = count($this->wrapText(
-                        $bottomFootnoteText,
-                        $width - ($pagePadding * 2),
-                        12,
-                        400,
-                        true
-                    ));
-                }
-                $bottomFootnoteHeight = $bottomFootnoteText !== ''
-                    ? $effectiveBottomFootnoteTopPadding + $bottomFootnotePadding + ($bottomFootnoteLineCount * $footnoteLineHeight)
-                    : 0;
-
-                $preLogoBottom = $pagePadding;
-                if ($logo !== null) {
-                    [, $logoHeight] = $this->fitLogo(imagesx($logo), imagesy($logo), $width - ($pagePadding * 2), 120);
-                    $preLogoBottom = $pagePadding + $logoHeight + 14;
-                }
-
-                $tableTopY = max($pagePadding + $headerHeight, $preLogoBottom + 70);
-                $height = $tableTopY + $tableBlockHeight + $bottomFootnoteHeight + $pageBottomPadding;
-
-                $minimumWidth = (float) max(($pagePadding * 2) + 1, ceil($height / 2));
-                if ($width >= $minimumWidth) {
-                    break;
-                }
-                $width = $minimumWidth;
+                $singleFootnoteHeight = $tableFootnoteTopPadding
+                    + $footnoteBottomPadding
+                    + ($lineCount * $footnoteLineHeight);
             }
+
+            $tableBlockHeight = $tableHeight + $singleFootnoteHeight;
+            $effectiveBottomFootnoteTopPadding = $singleFootnoteHeight > 0
+                ? $bottomFootnoteTopPaddingAfterTableFootnotes
+                : ($hasFooterTotals
+                    ? $bottomFootnoteTopPaddingAfterFooterRows
+                    : $bottomFootnoteTopPaddingWithoutSiblingFooters);
+
+            $bottomFootnoteLineCount = 0;
+            if ($bottomFootnoteText !== '') {
+                $bottomFootnoteLineCount = count($this->wrapText(
+                    $bottomFootnoteText,
+                    $width - ($pagePadding * 2),
+                    12,
+                    400,
+                    true
+                ));
+            }
+            $bottomFootnoteHeight = $bottomFootnoteText !== ''
+                ? $effectiveBottomFootnoteTopPadding + $bottomFootnotePadding + ($bottomFootnoteLineCount * $footnoteLineHeight)
+                : 0;
+
+            $preLogoBottom = $pagePadding;
+            if ($logo !== null) {
+                [, $logoHeight] = $this->fitLogo(imagesx($logo), imagesy($logo), $width - ($pagePadding * 2), 120);
+                $preLogoBottom = $pagePadding + $logoHeight + 14;
+            }
+
+            $tableTopY = max($pagePadding + $headerHeight, $preLogoBottom + 70);
+            $height = $tableTopY + $tableBlockHeight + $bottomFootnoteHeight + $pageBottomPadding;
+            [$width, $height] = $this->stabilizePageAspectRatio($width, $height, $pagePadding);
 
             if ($logo !== null) {
                 imagedestroy($logo);
@@ -628,38 +619,29 @@ class ReportPdfGenerator
             : '';
         $tableBlockHeight = $baseTableBlockHeight + $extraTableBlockHeight;
         $logo = $this->loadLogo($logoPath);
-        $height = 0.0;
-        $tableTopY = 0.0;
-        for ($pass = 0; $pass < 3; $pass++) {
-            $bottomFootnoteLineCount = 0;
-            if ($bottomFootnoteText !== '') {
-                $bottomFootnoteLineCount = count($this->wrapText(
-                    $bottomFootnoteText,
-                    $width - ($pagePadding * 2),
-                    12,
-                    400,
-                    true
-                ));
-            }
-            $bottomFootnoteHeight = $bottomFootnoteText !== ''
-                ? $effectiveBottomFootnoteTopPadding + $bottomFootnotePadding + ($bottomFootnoteLineCount * $footnoteLineHeight)
-                : 0;
-
-            $preLogoBottom = $pagePadding;
-            if ($logo !== null) {
-                [, $logoHeight] = $this->fitLogo(imagesx($logo), imagesy($logo), $width - ($pagePadding * 2), 120);
-                $preLogoBottom = $pagePadding + $logoHeight + 14;
-            }
-
-            $tableTopY = max($pagePadding + $headerHeight, $preLogoBottom + 70);
-            $height = $tableTopY + $tableBlockHeight + $bottomFootnoteHeight + $pageBottomPadding;
-
-            $minimumWidth = (float) max(($pagePadding * 2) + 1, ceil($height / 2));
-            if ($width >= $minimumWidth) {
-                break;
-            }
-            $width = $minimumWidth;
+        $bottomFootnoteLineCount = 0;
+        if ($bottomFootnoteText !== '') {
+            $bottomFootnoteLineCount = count($this->wrapText(
+                $bottomFootnoteText,
+                $width - ($pagePadding * 2),
+                12,
+                400,
+                true
+            ));
         }
+        $bottomFootnoteHeight = $bottomFootnoteText !== ''
+            ? $effectiveBottomFootnoteTopPadding + $bottomFootnotePadding + ($bottomFootnoteLineCount * $footnoteLineHeight)
+            : 0;
+
+        $preLogoBottom = $pagePadding;
+        if ($logo !== null) {
+            [, $logoHeight] = $this->fitLogo(imagesx($logo), imagesy($logo), $width - ($pagePadding * 2), 120);
+            $preLogoBottom = $pagePadding + $logoHeight + 14;
+        }
+
+        $tableTopY = max($pagePadding + $headerHeight, $preLogoBottom + 70);
+        $height = $tableTopY + $tableBlockHeight + $bottomFootnoteHeight + $pageBottomPadding;
+        [$width, $height] = $this->stabilizePageAspectRatio($width, $height, $pagePadding);
 
         if ($logo !== null) {
             imagedestroy($logo);
@@ -1380,6 +1362,30 @@ class ReportPdfGenerator
         }
 
         return [$drawWidth, $drawHeight];
+    }
+
+    /**
+     * @return array{0: float, 1: float}
+     */
+    private function stabilizePageAspectRatio(float $width, float $height, int $pagePadding): array
+    {
+        $safeWidth = max(1.0, $width);
+        $safeHeight = max(1.0, $height);
+
+        $minimumWidth = (float) max(
+            ($pagePadding * 2) + 1,
+            ceil($safeHeight * self::MIN_PAGE_ASPECT_RATIO)
+        );
+        if ($safeWidth < $minimumWidth) {
+            $safeWidth = $minimumWidth;
+        }
+
+        $maximumWidth = (float) floor($safeHeight * self::MAX_PAGE_ASPECT_RATIO);
+        if ($maximumWidth > 0.0 && $safeWidth > $maximumWidth) {
+            $safeHeight = (float) ceil($safeWidth / self::MAX_PAGE_ASPECT_RATIO);
+        }
+
+        return [$safeWidth, $safeHeight];
     }
 
     /**

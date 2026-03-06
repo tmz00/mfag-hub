@@ -380,7 +380,7 @@ class ReportsControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
-    public function test_render_report_pdf_keeps_page_width_at_least_half_of_page_height(): void
+    public function test_render_report_pdf_applies_page_aspect_ratio_guard(): void
     {
         $viewer = $this->createUser('standard');
         Sanctum::actingAs($viewer);
@@ -433,7 +433,9 @@ class ReportsControllerTest extends TestCase
 
         $pageWidth = (float) ($matches[1] ?? 0);
         $pageHeight = (float) ($matches[2] ?? 0);
-        $this->assertGreaterThanOrEqual(($pageHeight / 2) - 0.01, $pageWidth);
+        $this->assertGreaterThan(0.0, $pageWidth);
+        $this->assertGreaterThan(0.0, $pageHeight);
+        $this->assertGreaterThanOrEqual(($pageHeight * 0.8) - 0.01, $pageWidth);
     }
 
     public function test_admin_can_list_and_delete_non_expired_backups(): void

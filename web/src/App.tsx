@@ -28,6 +28,7 @@ import { Button, Spinner } from "./components/ui";
 import Team from "./pages/dashboard/team/Team";
 import Closings from "./pages/dashboard/closings/Closings";
 import Products from "./pages/dashboard/products/Products";
+import Persistency from "./pages/dashboard/tools/Persistency";
 
 const Login = lazy(() => import("./pages/auth/Login"));
 const OtpSignIn = lazy(() => import("./pages/auth/OtpSignIn"));
@@ -35,17 +36,25 @@ const Install = lazy(() => import("./pages/Install"));
 const Dashboard = lazy(() => import("./pages/dashboard/Dashboard"));
 const CompleteProfile = lazy(() => import("./pages/auth/CompleteProfile"));
 const Settings = lazy(() => import("./pages/dashboard/settings/Settings"));
-const EditProfile = lazy(() => import("./pages/dashboard/settings/EditProfile"));
-const ManageHandbook = lazy(() => import("./pages/admin/handbook/ManageHandbook"));
+const EditProfile = lazy(
+  () => import("./pages/dashboard/settings/EditProfile"),
+);
+const ManageHandbook = lazy(
+  () => import("./pages/admin/handbook/ManageHandbook"),
+);
 const HandbookView = lazy(
   () => import("./pages/dashboard/handbook/HandbookView"),
 );
 const HandbookSearch = lazy(
   () => import("./pages/dashboard/handbook/HandbookSearch"),
 );
-const ManageProducts = lazy(() => import("./pages/admin/products/ManageProducts"));
+const ManageProducts = lazy(
+  () => import("./pages/admin/products/ManageProducts"),
+);
 const BMI = lazy(() => import("./pages/dashboard/tools/BMI"));
-const CompoundEffect = lazy(() => import("./pages/dashboard/tools/CompoundEffect"));
+const CompoundEffect = lazy(
+  () => import("./pages/dashboard/tools/CompoundEffect"),
+);
 const DelayTax = lazy(() => import("./pages/dashboard/tools/DelayTax"));
 const ManageTeam = lazy(() => import("./pages/admin/team/ManageTeam"));
 const SubmitClosing = lazy(
@@ -56,9 +65,13 @@ const PlanEditor = lazy(
 );
 const ManageSources = lazy(() => import("./pages/admin/sources/ManageSources"));
 const Reports = lazy(() => import("./pages/admin/reports/GenerateReports"));
-const ManageReports = lazy(() => import("./pages/admin/reports/ManageReportTemplates"));
+const ManageReports = lazy(
+  () => import("./pages/admin/reports/ManageReportTemplates"),
+);
 const Admin = lazy(() => import("./pages/admin/Admin"));
-const Notifications = lazy(() => import("./pages/dashboard/notifications/Notifications"));
+const Notifications = lazy(
+  () => import("./pages/dashboard/notifications/Notifications"),
+);
 const NotificationDetail = lazy(
   () => import("./pages/dashboard/notifications/NotificationDetail"),
 );
@@ -92,7 +105,10 @@ const RouteLoadingFallback: Component<{ delayMs?: number }> = (props) => {
   const [visible, setVisible] = createSignal(false);
 
   onMount(() => {
-    const timer = window.setTimeout(() => setVisible(true), props.delayMs ?? 120);
+    const timer = window.setTimeout(
+      () => setVisible(true),
+      props.delayMs ?? 120,
+    );
     onCleanup(() => window.clearTimeout(timer));
   });
 
@@ -139,7 +155,9 @@ const RouteTransitionRoot: Component<RouteSectionProps> = (props) => {
   });
 
   return (
-    <div class={`route-transition-shell ${isEntering() ? "route-transition-enter" : ""}`}>
+    <div
+      class={`route-transition-shell ${isEntering() ? "route-transition-enter" : ""}`}
+    >
       {props.children}
     </div>
   );
@@ -175,7 +193,9 @@ const Protected: ParentComponent<{ allowIncomplete?: boolean }> = (props) => {
       if (!fscCode) return { complete: true, hasFsc: true };
       const nickname = String(data.nickname || "").trim();
       const agencyCode = String(data.agencyCode || "").trim();
-      const hasBirth = Boolean(data.birthYear && data.birthMonth && data.birthDay);
+      const hasBirth = Boolean(
+        data.birthYear && data.birthMonth && data.birthDay,
+      );
       const hasContract = Boolean(
         data.contractYear && data.contractMonth && data.contractDay,
       );
@@ -214,7 +234,11 @@ const Protected: ParentComponent<{ allowIncomplete?: boolean }> = (props) => {
 
       const onCompleteProfilePage = location.pathname === "/complete-profile";
 
-      if (!status.complete && !props.allowIncomplete && !onCompleteProfilePage) {
+      if (
+        !status.complete &&
+        !props.allowIncomplete &&
+        !onCompleteProfilePage
+      ) {
         navigate("/complete-profile", { replace: true });
       }
       if (status.complete && onCompleteProfilePage && !props.allowIncomplete) {
@@ -248,9 +272,8 @@ const App: Component = () => {
   const [pushGateResolved, setPushGateResolved] = createSignal(true);
   const [pushGateChecking, setPushGateChecking] = createSignal(false);
   const [pushGateActionBusy, setPushGateActionBusy] = createSignal(false);
-  const [pushGateReason, setPushGateReason] = createSignal<PushGateReason | null>(
-    null,
-  );
+  const [pushGateReason, setPushGateReason] =
+    createSignal<PushGateReason | null>(null);
   const [pushGateMessage, setPushGateMessage] = createSignal("");
   const [updateServiceWorker, setUpdateServiceWorker] = createSignal<
     ((reloadPage?: boolean) => Promise<void>) | null
@@ -315,7 +338,9 @@ const App: Component = () => {
       }
 
       if (options?.askPermission) {
-        promptedSync = await pushService.syncSubscription({ askPermission: true });
+        promptedSync = await pushService.syncSubscription({
+          askPermission: true,
+        });
       }
 
       const permission = await pushService.getPermissionFresh();
@@ -323,7 +348,7 @@ const App: Component = () => {
         if (runId === pushGateCheckRun) {
           openPushGate(
             "permission-default",
-            "Push notifications are mandatory for this app. Tap Enable Notifications to continue. If you changed this in device settings, close and reopen the app."
+            "Push notifications are mandatory for this app. Tap Enable Notifications to continue. If you changed this in device settings, close and reopen the app.",
           );
         }
         return false;
@@ -333,20 +358,22 @@ const App: Component = () => {
         if (runId === pushGateCheckRun) {
           openPushGate(
             "permission-denied",
-            "Notifications are blocked in device settings. Enable notifications, then close and reopen the app."
+            "Notifications are blocked in device settings. Enable notifications, then close and reopen the app.",
           );
         }
         return false;
       }
 
       const synced =
-        promptedSync || (await pushService.syncSubscription({ askPermission: false }));
-      const hasSubscription = synced || (await pushService.hasBrowserSubscription());
+        promptedSync ||
+        (await pushService.syncSubscription({ askPermission: false }));
+      const hasSubscription =
+        synced || (await pushService.hasBrowserSubscription());
       if (!hasSubscription) {
         if (runId === pushGateCheckRun) {
           openPushGate(
             "subscription-missing",
-            "This device is not subscribed to notifications yet. Enable notifications and close/reopen the app."
+            "This device is not subscribed to notifications yet. Enable notifications and close/reopen the app.",
           );
         }
         return false;
@@ -361,7 +388,7 @@ const App: Component = () => {
       if (runId === pushGateCheckRun) {
         openPushGate(
           "verification-failed",
-          "Unable to verify notification status right now. Check your connection and close/reopen the app."
+          "Unable to verify notification status right now. Check your connection and close/reopen the app.",
         );
       }
       return false;
@@ -514,7 +541,9 @@ const App: Component = () => {
                   when={pushGateChecking()}
                   fallback={
                     <>
-                      <p class="mt-3 text-base text-gray-700">{pushGateMessage()}</p>
+                      <p class="mt-3 text-base text-gray-700">
+                        {pushGateMessage()}
+                      </p>
                       <Show when={pushGateReason() === "permission-default"}>
                         <button
                           type="button"
@@ -545,315 +574,323 @@ const App: Component = () => {
           </Show>
         }
       >
-      <Router root={RouteTransitionRoot}>
-        <Route path="/" component={() => <HomeRedirect authed={authed} />} />
-        <Route
-          path="/install"
-          component={() => (
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <Install />
-            </Suspense>
-          )}
-        />
-        <Route
-          path="/login"
-          component={() =>
-            authed() ? (
-              <Navigate href="/" />
-            ) : (
+        <Router root={RouteTransitionRoot}>
+          <Route path="/" component={() => <HomeRedirect authed={authed} />} />
+          <Route
+            path="/install"
+            component={() => (
               <Suspense fallback={<RouteLoadingFallback />}>
-                <Login />
+                <Install />
               </Suspense>
-            )
-          }
-        />
-        <Route
-          path="/auth/otp"
-          component={() => (
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <OtpSignIn />
-            </Suspense>
-          )}
-        />
-        <Route
-          path="/complete-profile"
-          component={() => (
-            <Protected allowIncomplete>
+            )}
+          />
+          <Route
+            path="/login"
+            component={() =>
+              authed() ? (
+                <Navigate href="/" />
+              ) : (
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Login />
+                </Suspense>
+              )
+            }
+          />
+          <Route
+            path="/auth/otp"
+            component={() => (
               <Suspense fallback={<RouteLoadingFallback />}>
-                <CompleteProfile />
+                <OtpSignIn />
               </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/settings"
-          component={() => (
-            <Protected>
+            )}
+          />
+          <Route
+            path="/complete-profile"
+            component={() => (
+              <Protected allowIncomplete>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <CompleteProfile />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/settings"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Settings />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/settings/edit-profile"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <EditProfile />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/handbook"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <ManageHandbook />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/handbook/:categoryId"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <HandbookView />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/handbook/search"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <HandbookSearch />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/team"
+            component={() => (
+              <Protected>
+                <Team />
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/team"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <ManageTeam />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/closings"
+            component={() => (
+              <Protected>
+                <Closings />
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/reports"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Reports />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/report-templates"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <ManageReports />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/closings/submit"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <SubmitClosing />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/closings/submit/plan"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <PlanEditor />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/sources"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <ManageSources />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Admin />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/backups"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Backups />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/notifications"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Notifications />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/notifications/:id"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <NotificationDetail />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/notifications"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <ManageNotifications />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/products"
+            component={() => (
+              <Protected>
+                <Products />
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/products"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <ManageProducts />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/tools/bmi"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <BMI />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/tools/delay-tax"
+            component={() => (
               <Suspense fallback={<RouteLoadingFallback />}>
-                <Settings />
+                <DelayTax />
               </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/settings/edit-profile"
-          component={() => (
-            <Protected>
+            )}
+          />
+          <Route
+            path="/tools/compound-effect"
+            component={() => (
               <Suspense fallback={<RouteLoadingFallback />}>
-                <EditProfile />
+                <CompoundEffect />
               </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/handbook"
-          component={() => (
-            <Protected>
+            )}
+          />
+          <Route
+            path="/tools/persistency"
+            component={() => (
               <Suspense fallback={<RouteLoadingFallback />}>
-                <ManageHandbook />
+                <Persistency />
               </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/handbook/:categoryId"
-          component={() => (
-            <Protected>
+            )}
+          />
+          <Route
+            path="*404"
+            component={() => (
               <Suspense fallback={<RouteLoadingFallback />}>
-                <HandbookView />
+                <NotFound />
               </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/handbook/search"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <HandbookSearch />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/team"
-          component={() => (
-            <Protected>
-              <Team />
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/team"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <ManageTeam />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/closings"
-          component={() => (
-            <Protected>
-              <Closings />
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/reports"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <Reports />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/report-templates"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <ManageReports />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/closings/submit"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <SubmitClosing />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/closings/submit/plan"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <PlanEditor />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/sources"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <ManageSources />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <Admin />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/backups"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <Backups />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/notifications"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <Notifications />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/notifications/:id"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <NotificationDetail />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/notifications"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <ManageNotifications />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/products"
-          component={() => (
-            <Protected>
-              <Products />
-            </Protected>
-          )}
-        />
-        <Route
-          path="/admin/products"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <ManageProducts />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/tools/bmi"
-          component={() => (
-            <Protected>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <BMI />
-              </Suspense>
-            </Protected>
-          )}
-        />
-        <Route
-          path="/tools/delay-tax"
-          component={() => (
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <DelayTax />
-            </Suspense>
-          )}
-        />
-        <Route
-          path="/tools/compound-effect"
-          component={() => (
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <CompoundEffect />
-            </Suspense>
-          )}
-        />
-        <Route
-          path="*404"
-          component={() => (
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <NotFound />
-            </Suspense>
-          )}
-        />
-      </Router>
+            )}
+          />
+        </Router>
 
-      <Show when={needRefresh()}>
-        <div class="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
-          <div class="flex w-full max-w-2xl flex-col gap-3 rounded-xl border border-primary/30 bg-linear-to-r from-primary-600 to-secondary-600 px-4 py-3 text-base text-white shadow-lg sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div class="flex flex-col">
-              <span class="font-semibold text-white">Update available</span>
-              <span class="text-base text-white/80">
-                A new version is ready. Please update the app.
-              </span>
-            </div>
-            <div class="flex w-full items-center justify-end gap-2 sm:w-auto">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setNeedRefresh(false)}
-                class="!rounded-lg border border-white/40 !text-white hover:!bg-white/10 hover:!text-white"
-              >
-                Later
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                class="!rounded-lg !bg-white !text-primary hover:!bg-white/90 hover:!text-primary"
-                onClick={async () => {
-                  setIsUpdating(true);
-                  try {
-                    await updateServiceWorker()?.(true);
-                  } catch {
-                    setIsUpdating(false);
-                  }
-                }}
-              >
-                Update
-              </Button>
+        <Show when={needRefresh()}>
+          <div class="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+            <div class="flex w-full max-w-2xl flex-col gap-3 rounded-xl border border-primary/30 bg-linear-to-r from-primary-600 to-secondary-600 px-4 py-3 text-base text-white shadow-lg sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div class="flex flex-col">
+                <span class="font-semibold text-white">Update available</span>
+                <span class="text-base text-white/80">
+                  A new version is ready. Please update the app.
+                </span>
+              </div>
+              <div class="flex w-full items-center justify-end gap-2 sm:w-auto">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setNeedRefresh(false)}
+                  class="!rounded-lg border border-white/40 !text-white hover:!bg-white/10 hover:!text-white"
+                >
+                  Later
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  class="!rounded-lg !bg-white !text-primary hover:!bg-white/90 hover:!text-primary"
+                  onClick={async () => {
+                    setIsUpdating(true);
+                    try {
+                      await updateServiceWorker()?.(true);
+                    } catch {
+                      setIsUpdating(false);
+                    }
+                  }}
+                >
+                  Update
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </Show>
+        </Show>
       </Show>
       <Show when={isUpdating()}>
         <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">

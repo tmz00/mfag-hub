@@ -37,6 +37,7 @@ vi.mock("solid-icons/tb", () => {
     TbOutlinePlant: Icon,
     TbOutlineCrosshair: Icon,
     TbOutlineShield: Icon,
+    TbOutlinePercentage: Icon,
   };
 });
 

@@ -50,6 +50,7 @@ vi.mock("solid-icons/tb", () => {
     TbOutlineCrosshair: Icon,
     TbOutlineBell: Icon,
     TbOutlineShield: Icon,
+    TbOutlinePercentage: Icon,
   };
 });
 
@@ -152,6 +153,7 @@ describe("Dashboard page", () => {
     expect(screen.getByText("BMI")).toBeTruthy();
     expect(screen.getByText("The Delay Tax")).toBeTruthy();
     expect(screen.getByText("The Compound Effect")).toBeTruthy();
+    expect(screen.queryByText("Persistency")).toBeNull();
 
     await waitFor(() => {
       expect(screen.getByText("Protection")).toBeTruthy();

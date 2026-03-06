@@ -159,11 +159,11 @@ const ProfileCard: Component = () => {
         <Button
           variant="primaryOutline"
           onClick={() => navigate("/settings/edit-profile")}
-          aria-label="Edit profile"
-          title="Edit profile"
+          aria-label="Edit Profile"
+          title="Edit Profile"
         >
           <TbOutlinePencil class="h-4 w-4" />
-          Edit
+          Edit Profile
         </Button>
       </div>
     </div>

@@ -9,6 +9,8 @@ import {
   TbOutlineCrosshair,
   TbOutlineBell,
   TbOutlineShield,
+  TbOutlineShieldCheck,
+  TbOutlinePercentage,
 } from "solid-icons/tb";
 
 export type DashboardOption = {
@@ -72,5 +74,11 @@ export const dashboardOptions: Record<string, DashboardOption> = {
     description: "Visualise the power of compound growth",
     icon: TbOutlinePlant,
     href: "/tools/compound-effect",
+  },
+  persistency: {
+    title: "Persistency",
+    description: "Calculate your persistency projections",
+    icon: TbOutlinePercentage,
+    href: "/tools/persistency",
   },
 };

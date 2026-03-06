@@ -21,9 +21,7 @@ class OtpAuthController extends Controller
     private const OTP_MAX_ATTEMPTS = 5;
     private const REFRESH_TOKEN_DAYS = 30;
 
-    public function __construct(private readonly OtpService $otpService)
-    {
-    }
+    public function __construct(private readonly OtpService $otpService) {}
 
     public function requestOtp(Request $request): JsonResponse
     {
@@ -188,6 +186,7 @@ class OtpAuthController extends Controller
             'agencyCode' => $user->agency?->code ?? '',
             'nickname' => $user->nickname,
             'fullName' => $user->full_name,
+            'isActive' => $user->is_active,
         ]);
     }
 

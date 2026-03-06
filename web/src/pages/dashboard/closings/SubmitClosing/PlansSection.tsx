@@ -188,176 +188,177 @@ const PlansSection: Component<Props> = (props) => {
                 product.premiumRows.every(
                   (row) => row.premium > 0 && Boolean(row.frequency),
                 );
+              const productActions = () => (
+                <div class="flex items-center gap-2">
+                  <IconButton
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onEditPlan(
+                        cloneDraftProduct(product),
+                        productIndex(),
+                        isAddonProduct(product),
+                      );
+                    }}
+                    class="rounded-md border border-primary/30 text-primary hover:bg-primary/10"
+                    title="Edit plan"
+                    aria-label="Edit plan"
+                  >
+                    <TbOutlinePencil />
+                  </IconButton>
+                  <IconButton
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (
+                        await confirmRemoveProduct({
+                          message: `Remove ${product.shortName || product.fullName}?`,
+                        })
+                      ) {
+                        handleRemoveProduct(productIndex());
+                      }
+                    }}
+                    class="rounded-md border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
+                    title="Remove plan"
+                    aria-label="Remove plan"
+                  >
+                    <TbOutlineTrash />
+                  </IconButton>
+                </div>
+              );
               return (
                 <div
                   id={`submit-plan-${product.id}`}
                   class={`relative border-b border-gray-200 ${product.id === removingProductId() ? "animate-row-remove" : ""} ${product.id === props.highlightProductId ? "animate-row-highlight" : ""}`}
                 >
                   <div class="w-full px-4 py-3 text-left">
-                    <div class="min-w-0">
-                      <div>
-                        <span class="text-base font-semibold text-gray-950">
-                          {productDisplayName()}
+                    <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
+                      <span class="block break-words text-base font-semibold text-gray-950">
+                        {productDisplayName()}
+                      </span>
+                      <div class="shrink-0">{productActions()}</div>
+                    </div>
+                    <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span class="rounded bg-primary/10 px-1.5 py-0.5 text-base font-medium text-primary">
+                        {product.fycRate === -1
+                          ? "follows base"
+                          : `${product.fycRate}%`}
+                      </span>
+                      <Show when={product.type}>
+                        <span
+                          class={`rounded px-1.5 py-0.5 text-base font-medium ${classificationBadgeClass(
+                            product.type!,
+                          )}`}
+                        >
+                          {product.type}
                         </span>
-                        <div class="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span class="rounded bg-primary/10 px-1.5 py-0.5 text-base font-medium text-primary">
-                            {product.fycRate === -1
-                              ? "follows base"
-                              : `${product.fycRate}%`}
-                          </span>
-                          <Show when={product.type}>
-                            <span
-                              class={`rounded px-1.5 py-0.5 text-base font-medium ${classificationBadgeClass(
-                                product.type!,
-                              )}`}
-                            >
-                              {product.type}
-                            </span>
-                          </Show>
-                          <Show when={product.gst}>
-                            <span class="rounded bg-yellow-50 px-1.5 py-0.5 text-base font-medium text-yellow-700">
-                              GST
-                            </span>
-                          </Show>
-                        </div>
-                      </div>
-                      <Show
-                        when={hasValidPremium()}
-                        fallback={
-                          <div class="mt-1 text-base text-red-500">
-                            Please key in premium / frequency
-                          </div>
-                        }
-                      >
-                        <div class="mt-1 space-y-0.5 text-base text-gray-600">
-                          <For
-                            each={consolidatePremiumRows(product.premiumRows)}
-                          >
-                            {(row) => (
-                              <div>
-                               {row.quantity} × 
-                                ${formatCurrency(row.premium)} /{" "}
-                                {formatFrequencySummary(row.frequency)}
-                              </div>
-                            )}
-                          </For>
-                        </div>
-                        <div class="mt-1 text-base text-green-600">
-                          <div>FYC: ${formatCurrency(calcs().fyc)}</div>
-                          <div>AFYP: ${formatCurrency(calcs().fyp)}</div>
-                        </div>
-                        <Show when={product.riders.length > 0}>
-                          <div class="mt-2 space-y-2 border-l-2 border-purple-200 pl-3">
-                            <For each={product.riders}>
-                              {(rider) => {
-                                const riderCalcs = getRiderCalcs(
-                                  rider,
-                                  product.fycRate,
-                                  product.type?.toLowerCase() === "single",
-                                );
-                                const effectiveRate =
-                                  rider.fycRate === -1
-                                    ? product.fycRate
-                                    : rider.fycRate;
-                                return (
-                                  <div>
-                                    <div class="flex flex-wrap items-center gap-1.5">
-                                      <TbOutlinePuzzle class="h-3.5 w-3.5 text-purple-500" />
-                                      <span class="text-base font-medium text-gray-800">
-                                        {rider.shortName || rider.fullName}
-                                      </span>
-                                      <span class="rounded bg-primary/10 px-1.5 py-0.5 text-base font-medium text-primary">
-                                        {rider.fycRate === -1
-                                          ? `follows base (${product.fycRate}%)`
-                                          : `${effectiveRate}%`}
-                                      </span>
-                                    </div>
-                                    <Show
-                                      when={rider.premiumRows.every(
-                                        (row) =>
-                                          row.premium > 0 &&
-                                          Boolean(row.frequency),
-                                      )}
-                                      fallback={
-                                        <div class="mt-0.5 pl-5 text-base text-red-500">
-                                          Please key in premium / frequency
-                                        </div>
-                                      }
-                                    >
-                                      <div class="mt-0.5 space-y-0.5 pl-5 text-base text-gray-500">
-                                        <For
-                                          each={consolidatePremiumRows(
-                                            rider.premiumRows,
-                                          )}
-                                        >
-                                          {(row) => (
-                                            <div>
-                                              ${formatCurrency(row.premium)} /{" "}
-                                              {formatFrequencySummary(
-                                                row.frequency,
-                                              )}
-                                              <Show when={row.quantity > 1}>
-                                                {" "}
-                                                × {row.quantity}
-                                              </Show>
-                                            </div>
-                                          )}
-                                        </For>
-                                      </div>
-                                      <div class="mt-0.5 pl-5 text-base text-green-600">
-                                        <div>
-                                          FYC: ${formatCurrency(riderCalcs.fyc)}
-                                        </div>
-                                        <div>
-                                          AFYP: $
-                                          {formatCurrency(riderCalcs.fyp)}
-                                        </div>
-                                      </div>
-                                    </Show>
-                                  </div>
-                                );
-                              }}
-                            </For>
-                          </div>
-                        </Show>
+                      </Show>
+                      <Show when={product.gst}>
+                        <span class="rounded bg-yellow-50 px-1.5 py-0.5 text-base font-medium text-yellow-700">
+                          GST
+                        </span>
                       </Show>
                     </div>
-                    <div class="absolute right-4 top-3 flex items-center gap-2">
-                      <IconButton
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          props.onEditPlan(
-                            cloneDraftProduct(product),
-                            productIndex(),
-                            isAddonProduct(product),
-                          );
-                        }}
-                        class="rounded-md border border-primary/30 text-primary hover:bg-primary/10"
-                        title="Edit plan"
-                        aria-label="Edit plan"
-                      >
-                        <TbOutlinePencil />
-                      </IconButton>
-                      <IconButton
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (
-                            await confirmRemoveProduct({
-                              message: `Remove ${product.shortName || product.fullName}?`,
-                            })
-                          ) {
-                            handleRemoveProduct(productIndex());
-                          }
-                        }}
-                        class="rounded-md border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
-                        title="Remove plan"
-                        aria-label="Remove plan"
-                      >
-                        <TbOutlineTrash />
-                      </IconButton>
-                    </div>
+                    <Show
+                      when={hasValidPremium()}
+                      fallback={
+                        <div class="mt-1 text-base text-red-500">
+                          Please key in premium / frequency
+                        </div>
+                      }
+                    >
+                      <div class="mt-1 space-y-0.5 text-base text-gray-600">
+                        <For
+                          each={consolidatePremiumRows(product.premiumRows)}
+                        >
+                          {(row) => (
+                            <div>
+                             {row.quantity} × 
+                              ${formatCurrency(row.premium)} /{" "}
+                              {formatFrequencySummary(row.frequency)}
+                            </div>
+                          )}
+                        </For>
+                      </div>
+                      <div class="mt-1 text-base text-green-600">
+                        <div>FYC: ${formatCurrency(calcs().fyc)}</div>
+                        <div>AFYP: ${formatCurrency(calcs().fyp)}</div>
+                      </div>
+                      <Show when={product.riders.length > 0}>
+                        <div class="mt-2 space-y-2 border-l-2 border-purple-200 pl-3">
+                          <For each={product.riders}>
+                            {(rider) => {
+                              const riderCalcs = getRiderCalcs(
+                                rider,
+                                product.fycRate,
+                                product.type?.toLowerCase() === "single",
+                              );
+                              const effectiveRate =
+                                rider.fycRate === -1
+                                  ? product.fycRate
+                                  : rider.fycRate;
+                              return (
+                                <div>
+                                  <div class="flex flex-wrap items-center gap-1.5">
+                                    <TbOutlinePuzzle class="h-3.5 w-3.5 text-purple-500" />
+                                    <span class="text-base font-medium text-gray-800">
+                                      {rider.shortName || rider.fullName}
+                                    </span>
+                                    <span class="rounded bg-primary/10 px-1.5 py-0.5 text-base font-medium text-primary">
+                                      {rider.fycRate === -1
+                                        ? `follows base (${product.fycRate}%)`
+                                        : `${effectiveRate}%`}
+                                    </span>
+                                  </div>
+                                  <Show
+                                    when={rider.premiumRows.every(
+                                      (row) =>
+                                        row.premium > 0 &&
+                                        Boolean(row.frequency),
+                                    )}
+                                    fallback={
+                                      <div class="mt-0.5 pl-5 text-base text-red-500">
+                                        Please key in premium / frequency
+                                      </div>
+                                    }
+                                  >
+                                    <div class="mt-0.5 space-y-0.5 pl-5 text-base text-gray-500">
+                                      <For
+                                        each={consolidatePremiumRows(
+                                          rider.premiumRows,
+                                        )}
+                                      >
+                                        {(row) => (
+                                          <div>
+                                            ${formatCurrency(row.premium)} /{" "}
+                                            {formatFrequencySummary(
+                                              row.frequency,
+                                            )}
+                                            <Show when={row.quantity > 1}>
+                                              {" "}
+                                              × {row.quantity}
+                                            </Show>
+                                          </div>
+                                        )}
+                                      </For>
+                                    </div>
+                                    <div class="mt-0.5 pl-5 text-base text-green-600">
+                                      <div>
+                                        FYC: ${formatCurrency(riderCalcs.fyc)}
+                                      </div>
+                                      <div>
+                                        AFYP: $
+                                        {formatCurrency(riderCalcs.fyp)}
+                                      </div>
+                                    </div>
+                                  </Show>
+                                </div>
+                              );
+                            }}
+                          </For>
+                        </div>
+                      </Show>
+                    </Show>
                   </div>
                 </div>
               );

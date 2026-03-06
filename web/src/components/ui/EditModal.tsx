@@ -1,4 +1,5 @@
 import { Component, Show, createSignal, onCleanup, onMount } from "solid-js";
+import type { JSX } from "solid-js";
 import { useBeforeLeave } from "@solidjs/router";
 import { Button } from "./Button";
 import { VsSave } from "solid-icons/vs";
@@ -9,6 +10,8 @@ import { Spinner } from "./Spinner";
 
 type EditModalProps = {
   title: string;
+  headerTitle?: JSX.Element | string;
+  headerIcon?: JSX.Element;
   onClose: () => void;
   onSave?: () => void;
   saving?: () => boolean;
@@ -203,7 +206,9 @@ export const EditModal: Component<EditModalProps> = (props) => {
         <PageHeader
           variant="plain"
           onBack={props.hideBackButton ? undefined : handleClose}
-          subtitle={props.title}
+          icon={props.headerIcon}
+          title={props.headerTitle}
+          subtitle={props.headerTitle ? undefined : props.title}
           class="sticky top-0 z-10"
           maxWidthClass={maxWidthClass()}
         />
