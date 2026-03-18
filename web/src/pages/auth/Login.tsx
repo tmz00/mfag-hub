@@ -131,7 +131,7 @@ const Login: Component = () => {
     try {
       await resetCurrentOriginSiteData();
       setStatus("App data reset. Reloading...");
-      window.location.replace("/login");
+      window.location.replace("/");
     } catch {
       window.location.reload();
     } finally {
@@ -178,8 +178,10 @@ const Login: Component = () => {
                 id="fscCode"
                 label="FSC Code"
                 type="text"
-                placeholder="Enter your FSC code"
+                placeholder="Enter your 5-digit FSC code"
                 autocomplete="fscCode"
+                inputmode="numeric"
+                pattern="[0-9]{5}"
                 value={fscCode()}
                 error={fscError()}
                 disabled={isLoading()}
@@ -231,8 +233,8 @@ const Login: Component = () => {
                         : "Reset app data and reload"}
                     </Button>
                     <p class="text-center text-xs text-gray-500">
-                      If this still fails, clear site data for hub.mfag.sg and
-                      hubapi.mfag.sg in browser settings.
+                      If this still fails, clear this app's site data in
+                      browser settings and try again.
                     </p>
                   </div>
                 </Show>

@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\WebPushService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
@@ -98,6 +100,55 @@ class NotificationControllerTest extends TestCase
             ->map(static fn (array $row): string => (string) ($row['id'] ?? ''))
             ->all();
         $this->assertContains((string) $id, $ids);
+    }
+
+    public function test_send_is_idempotent_for_already_sent_notifications(): void
+    {
+        $webPush = new class extends WebPushService {
+            public int $sendCalls = 0;
+
+            public function sendToMany(
+                Collection $subscriptions,
+                string $title,
+                string $body,
+                ?string $url = null,
+                ?int $notificationId = null
+            ): array {
+                $this->sendCalls++;
+
+                return [
+                    'queued' => 0,
+                    'succeeded' => 0,
+                    'failed' => 0,
+                    'expiredEndpoints' => [],
+                ];
+            }
+        };
+        $this->instance(WebPushService::class, $webPush);
+
+        $admin = $this->createUser('admin', [
+            'email' => 'admin-idempotent@example.test',
+            'fsc_code' => '99002',
+        ]);
+        $notificationId = $this->createNotification([
+            'title' => 'Reminder',
+            'body' => 'Check this notice.',
+            'sent_at' => null,
+        ]);
+        Sanctum::actingAs($admin);
+
+        $this->postJson("/api/notifications/{$notificationId}/send")
+            ->assertOk()
+            ->assertJson(['id' => (string) $notificationId]);
+
+        $sentAt = DB::table('notifications')->where('id', $notificationId)->value('sent_at');
+        $this->assertNotNull($sentAt);
+
+        $this->postJson("/api/notifications/{$notificationId}/send")
+            ->assertOk()
+            ->assertJson(['id' => (string) $notificationId]);
+
+        $this->assertSame(1, $webPush->sendCalls);
     }
 
     public function test_non_admin_cannot_access_admin_notification_routes(): void
@@ -261,6 +312,24 @@ class NotificationControllerTest extends TestCase
             ->assertJsonValidationErrors(['file']);
 
         $this->assertDatabaseMissing('notification_files', ['storage_path' => 'notifications/memo.pdf']);
+    }
+
+    public function test_admin_cannot_upload_disallowed_notification_attachment_types(): void
+    {
+        Storage::fake('local');
+        $admin = $this->createUser('admin');
+        $notificationId = $this->createNotification(['sent_at' => null]);
+        Sanctum::actingAs($admin);
+
+        $response = $this->postJson("/api/notifications/{$notificationId}/attachments", [
+            'file' => UploadedFile::fake()->create('script.html', 5, 'text/html'),
+        ]);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['file']);
+
+        $this->assertDatabaseCount('notification_files', 0);
     }
 
     public function test_read_state_and_unread_count_respect_scope_and_notification_target(): void

@@ -205,6 +205,15 @@ describe("authService", () => {
     );
   });
 
+  it("validates FSC codes as exactly five digits", async () => {
+    const mod = await loadAuthModule();
+
+    expect(mod.validateFscCode("")).toBe("FSC code is required");
+    expect(mod.validateFscCode("1234")).toBe("FSC code must be exactly 5 digits");
+    expect(mod.validateFscCode("12A45")).toBe("FSC code must be exactly 5 digits");
+    expect(mod.validateFscCode("12345")).toBe("");
+  });
+
   it("surfaces a useful message from html error responses", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

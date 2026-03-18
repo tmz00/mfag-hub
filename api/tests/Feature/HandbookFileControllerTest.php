@@ -213,6 +213,27 @@ class HandbookFileControllerTest extends TestCase
         $this->assertDatabaseMissing('handbook_files', ['path' => 'handbook/guide.pdf']);
     }
 
+    public function test_editor_cannot_upload_disallowed_handbook_file_types(): void
+    {
+        Storage::fake('local');
+        $editor = $this->createUser('editor', [
+            'email' => 'editor-blocked@example.test',
+            'fsc_code' => '45002',
+            'nickname' => 'EditorBlocked',
+        ]);
+        Sanctum::actingAs($editor);
+
+        $response = $this->postJson('/api/handbook/upload', [
+            'file' => UploadedFile::fake()->create('script.html', 5, 'text/html'),
+        ]);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['file']);
+
+        $this->assertDatabaseCount('handbook_files', 0);
+    }
+
     private function createUser(string $accessLevel = 'standard', array $overrides = []): User
     {
         static $counter = 1;

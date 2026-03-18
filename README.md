@@ -6,6 +6,8 @@ This README is still intentionally frontend-focused. The PHP Laravel API backend
 
 This repository root is the `apps/` directory. Unless noted otherwise, paths below are relative to this root.
 
+The current production deployment serves the SPA from `https://hub.mfag.sg/` and mounts the Laravel backend under the same origin at `/api`, so browser API requests resolve to `https://hub.mfag.sg/api/...`.
+
 ## What This App Does
 
 The frontend handles:
@@ -49,6 +51,14 @@ The repo is split into two main apps.
 ```bash
 npm --prefix web install
 ```
+
+Root-level shortcuts from `apps/`:
+
+- `npm run dev:web`
+- `npm run build:web`
+- `npm run test:web`
+- `npm run dev:api`
+- `npm run test:api`
 
 ### Run Locally
 
@@ -97,16 +107,22 @@ The frontend talks to the backend over HTTP.
 Key environment variables:
 
 - `VITE_API_BASE_URL`
-  Used as the API base when not using the dev proxy. Defaults to `http://127.0.0.1:8000`.
+  Used as the API origin host when not using the dev proxy. The service layer still normalizes request paths to `/api/...`, so a production value of `https://hub.mfag.sg` resolves to `https://hub.mfag.sg/api/...`. When unset, it falls back to `http://127.0.0.1:8000`.
 - `VITE_USE_API_PROXY`
   In development, defaults to `true`. When enabled, frontend requests go through the Vite proxy instead of hitting the API host directly.
 - `VITE_API_PROXY_TARGET`
   Override the Vite proxy target in development.
 
-The repo already includes example local environment files:
+Tracked environment files in this repo:
 
 - `web/.env.local`
 - `web/.env.staging`
+- `web/.env.production`
+
+Current defaults:
+
+- local direct API: `VITE_API_BASE_URL=http://127.0.0.1:8000`
+- production: `VITE_API_BASE_URL=https://hub.mfag.sg`
 
 ### Dev Proxy
 
@@ -115,7 +131,7 @@ The Vite config proxies these paths to the backend in development:
 - `/api`
 - `/sanctum`
 
-This avoids local CORS issues and keeps frontend code using relative API paths.
+This avoids local CORS issues and keeps frontend code using relative API paths. The proxy also strips the leading `/api` before forwarding because the Laravel app itself now serves app-relative routes such as `/auth/request-otp`.
 
 ## Frontend Architecture
 
@@ -425,7 +441,14 @@ Typical flow:
 2. run `npm --prefix web run build`
 3. deploy the `web/dist/` output to your static hosting target
 
-If backend hostnames differ by environment, confirm:
+Current production hosting shape:
+
+1. deploy the SPA build into `public_html/`
+2. deploy the Laravel app outside web root, for example `~/laravel-api`
+3. expose the backend at `public_html/api -> ~/laravel-api/public`
+4. keep `VITE_API_BASE_URL=https://hub.mfag.sg` so browser requests stay same-origin and resolve to `/api/...`
+
+If backend hosts or mount points differ by environment, confirm:
 
 - `VITE_API_BASE_URL`
 - any proxy assumptions

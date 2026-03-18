@@ -28,11 +28,17 @@ import {
   closingsService,
   type Closing,
   type ClosingInput,
+  type ClosingProduct,
   type PremiumFrequency,
   getAnnualizedFYP,
   getFYC,
 } from "../../../../services/closingsService";
-import { productsService } from "../../../../services/productsService";
+import {
+  productsService,
+  type BasePlan,
+  type ProductCatalog,
+  type Rider,
+} from "../../../../services/productsService";
 import { authService } from "../../../../services/authService";
 import { teamService } from "../../../../services/teamService";
 import { sourcesService } from "../../../../services/sourcesService";
@@ -49,7 +55,11 @@ import {
   consumePendingHighlightProductId,
   consumePendingScrollToAddNewBusiness,
 } from "./_submitStore";
-import { appendAttachedSuffixesFromRiders } from "../../../../utils/attachedSuffix";
+import {
+  appendAttachedSuffixesByRiderProductId,
+  appendAttachedSuffixesFromRiders,
+} from "../../../../utils/attachedSuffix";
+import { consolidatePremiumRowsByAmountAndFrequency } from "../../../../utils/closingPremiumRows";
 const PlansSection = lazy(() => import("./PlansSection"));
 const _FscPicker = lazy(() => import("./_FscPicker"));
 const SourcePicker = lazy(() => import("./SourcePicker"));
@@ -121,6 +131,249 @@ const createEmptyDraft = (): ClosingDraft => ({
   referrals: null,
   referralsComment: "",
 });
+
+const isSameLocalDate = (left: Date, right: Date) =>
+  left.getFullYear() === right.getFullYear() &&
+  left.getMonth() === right.getMonth() &&
+  left.getDate() === right.getDate();
+
+const formatSummaryDate = (date: Date) =>
+  date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+export const getSummaryDateLabel = (
+  submittedAt?: Date | string | null,
+  now: Date = new Date(),
+) => {
+  if (!submittedAt) return "";
+  const parsed =
+    submittedAt instanceof Date ? submittedAt : new Date(submittedAt);
+  if (Number.isNaN(parsed.getTime()) || isSameLocalDate(parsed, now)) {
+    return "";
+  }
+  return formatSummaryDate(parsed);
+};
+
+const normalizeCatalogOptions = (
+  options: unknown,
+): Array<{ label: string; fycRate: string }> =>
+  Array.isArray(options) ? options : [];
+
+const getCatalogDefaultFycRate = (
+  options: Array<{ label: string; fycRate: string }>,
+  fallbackRate?: string,
+) => {
+  const sortedOptions = [...options].sort((left, right) => {
+    const leftRate = Number(left.fycRate);
+    const rightRate = Number(right.fycRate);
+    const normalizedLeft = Number.isFinite(leftRate) ? leftRate : -Infinity;
+    const normalizedRight = Number.isFinite(rightRate) ? rightRate : -Infinity;
+    if (normalizedLeft !== normalizedRight) {
+      return normalizedRight - normalizedLeft;
+    }
+    return String(left.label || "").localeCompare(String(right.label || ""));
+  });
+
+  if (sortedOptions.length > 0) {
+    const parsed = Number(sortedOptions[0].fycRate);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  const parsedFallback = Number(fallbackRate);
+  return Number.isFinite(parsedFallback) ? parsedFallback : 0;
+};
+
+const prependMissingSelectedOption = (
+  options: Array<{ label: string; fycRate: string }>,
+  selectedOption?: string,
+  selectedRate?: number,
+) => {
+  const normalizedSelected = String(selectedOption || "").trim();
+  if (!normalizedSelected) return options;
+  if (options.some((option) => option.label === normalizedSelected)) {
+    return options;
+  }
+
+  const fallbackRate = Number.isFinite(Number(selectedRate))
+    ? String(selectedRate)
+    : "0";
+
+  return [
+    {
+      label: normalizedSelected,
+      fycRate: fallbackRate,
+    },
+    ...options,
+  ];
+};
+
+const findCatalogBasePlan = (
+  item: ClosingProduct,
+  catalog?: ProductCatalog | null,
+): BasePlan | undefined => {
+  const basePlans = catalog?.basePlans || [];
+  const productId = String(item.productId || "").trim();
+  const fullName = String(item.fullName || "").trim();
+
+  return (
+    basePlans.find(
+      (plan) =>
+        String(plan.id || "").trim() === productId &&
+        String(plan.fullName || "").trim() === fullName,
+    ) || basePlans.find((plan) => String(plan.id || "").trim() === productId)
+  );
+};
+
+const findCatalogRider = (
+  item: ClosingProduct,
+  catalog?: ProductCatalog | null,
+): Rider | undefined => {
+  const riders = catalog?.riders || [];
+  const productId = String(item.productId || "").trim();
+  const fullName = String(item.fullName || "").trim();
+
+  return (
+    riders.find(
+      (rider) =>
+        String(rider.id || "").trim() === productId &&
+        String(rider.fullName || "").trim() === fullName,
+    ) || riders.find((rider) => String(rider.id || "").trim() === productId)
+  );
+};
+
+const resolveHydratedFycRate = (
+  item: ClosingProduct,
+  options: Array<{ label: string; fycRate: string }>,
+  fallbackRate?: string,
+) => {
+  const selectedOption = String(item.premiumTermOrIssueAge || "").trim();
+  if (selectedOption) {
+    const matchedOption = options.find((option) => option.label === selectedOption);
+    const matchedRate = Number(matchedOption?.fycRate);
+    if (Number.isFinite(matchedRate)) {
+      return matchedRate;
+    }
+  }
+
+  if (item.fycRate === -1) return -1;
+
+  if (item.fycRate !== 0 && Number.isFinite(Number(item.fycRate))) {
+    return Number(item.fycRate);
+  }
+
+  return getCatalogDefaultFycRate(options, fallbackRate);
+};
+
+const buildDraftPremiumRowsFromClosingProduct = (
+  item: ClosingProduct,
+  rowIdPrefix: string,
+): DraftPremiumRow[] => {
+  const normalizeFrequency = (value?: string): PremiumFrequency | "" =>
+    ((normalizePremiumFrequency(value) as PremiumFrequency | undefined) || "");
+
+  const premiumRows = consolidatePremiumRowsByAmountAndFrequency(
+    item.quantitiesAndPremiums || [],
+  ).map((entry, entryIdx) => ({
+    id: `${rowIdPrefix}-row-${entryIdx}`,
+    premium: entry.premium || 0,
+    frequency: normalizeFrequency(entry.frequency),
+    quantity: entry.quantity || 1,
+  }));
+
+  return premiumRows.length
+    ? premiumRows
+    : [
+        {
+          id: `${rowIdPrefix}-row-0`,
+          premium: 0,
+          frequency: "",
+          quantity: 1,
+        },
+      ];
+};
+
+export const hydrateDraftProductFromClosingProduct = (
+  item: ClosingProduct,
+  rowIdPrefix: string,
+  catalog?: ProductCatalog | null,
+): DraftProduct => {
+  const catalogItem = item.isRider
+    ? findCatalogRider(item, catalog)
+    : findCatalogBasePlan(item, catalog);
+  const catalogShortName = String(catalogItem?.shortName || "").trim();
+  const storedShortName = String(item.shortName || "").trim();
+  const suffixByRiderProductId = Object.fromEntries(
+    (catalog?.riders || [])
+      .map((rider) => [
+        String(rider.id || "").trim(),
+        String(rider.attachedSuffix || "").trim(),
+      ])
+      .filter(([riderId, suffix]) => riderId && suffix),
+  );
+  const autoManagedShortNameWithSuffixes = item.isRider
+    ? catalogShortName
+    : appendAttachedSuffixesByRiderProductId(
+        catalogShortName,
+        item.riders,
+        suffixByRiderProductId,
+      ).trim();
+  const autoManagedShortNames = new Set(
+    [catalogShortName, autoManagedShortNameWithSuffixes].filter(Boolean),
+  );
+  const resolvedShortName =
+    !item.isRider &&
+    storedShortName &&
+    catalogShortName &&
+    storedShortName === catalogShortName &&
+    autoManagedShortNameWithSuffixes
+      ? autoManagedShortNameWithSuffixes
+      : storedShortName || autoManagedShortNameWithSuffixes || catalogShortName;
+  const optionsFromCatalog = normalizeCatalogOptions(catalogItem?.options);
+  const mergedOptions = prependMissingSelectedOption(
+    optionsFromCatalog,
+    item.premiumTermOrIssueAge,
+    item.fycRate,
+  );
+
+  return {
+    id: rowIdPrefix,
+    isRider: Boolean(item.isRider),
+    productId: item.productId,
+    fullName: item.fullName,
+    shortName: resolvedShortName,
+    shortNameManuallyEdited: Boolean(
+      storedShortName &&
+        autoManagedShortNames.size > 0 &&
+        !autoManagedShortNames.has(storedShortName),
+    ),
+    attachedSuffix: item.isRider
+      ? (catalogItem as Rider | undefined)?.attachedSuffix
+      : undefined,
+    category: catalogItem?.category,
+    type: item.type || catalogItem?.type,
+    notes: catalogItem?.notes,
+    premiumTermOrIssueAge: item.premiumTermOrIssueAge,
+    optionTitle: catalogItem?.optionTitle,
+    options: mergedOptions.length ? mergedOptions : undefined,
+    fycRate: resolveHydratedFycRate(item, mergedOptions, catalogItem?.fycRate),
+    frequencies: item.frequencies,
+    gst: item.gst > 0,
+    premiumRows: buildDraftPremiumRowsFromClosingProduct(item, rowIdPrefix),
+    riders: (item.riders || []).map((rider, riderIndex) =>
+      hydrateDraftProductFromClosingProduct(
+        rider,
+        `${rowIdPrefix}-rider-${riderIndex}`,
+        catalog,
+      ),
+    ),
+    attachableRiders: item.isRider
+      ? undefined
+      : (catalogItem as BasePlan | undefined)?.attachableRiders,
+  };
+};
 
 const isDraftShared = (
   draft: Pick<ClosingDraft, "sharedFscCode" | "sharedFscName" | "sharedFscNone">,
@@ -478,6 +731,9 @@ const SubmitClosing: Component = () => {
     }
     return previewTimestampCreatedAt();
   });
+  const summaryDateLabel = createMemo(() =>
+    getSummaryDateLabel(editId() ? existingClosing()?.timestamp : null),
+  );
   const [sources] = createResource(() => sourcesService.getSources());
   const [DeleteClosingModal, confirmDeleteClosing] = createConfirm({
     title: "Delete closing",
@@ -613,7 +869,11 @@ const SubmitClosing: Component = () => {
   createEffect(() => {
     if (restoredFromSave) return;
     const existing = existingClosing();
+    const catalog = productsCatalog();
     if (!existing || existingClosing.loading) {
+      return;
+    }
+    if (editId() && productsCatalog.loading) {
       return;
     }
     setSubmittedBy(
@@ -623,80 +883,11 @@ const SubmitClosing: Component = () => {
           nickname: existing.fscName || "",
         },
     );
-    const normalizeFrequency = (value?: string): PremiumFrequency | "" => {
-      return (
-        (normalizePremiumFrequency(value) as PremiumFrequency | undefined) || ""
-      );
-    };
 
     // Convert Closing to ClosingDraft
-    const products: DraftProduct[] = existing.items.map((item, idx) => {
-      const premiumRows: DraftPremiumRow[] =
-        item.quantitiesAndPremiums?.map((entry, entryIdx) => ({
-          id: `existing-${idx}-row-${entryIdx}`,
-          premium: entry.premium || 0,
-          frequency: normalizeFrequency(entry.frequency),
-          quantity: entry.quantity || 1,
-        })) || [];
-
-      const fallbackRows: DraftPremiumRow[] = premiumRows.length
-        ? premiumRows
-        : [
-            {
-              id: `existing-${idx}-row-0`,
-              premium: 0,
-              frequency: "",
-              quantity: 1,
-            },
-          ];
-
-      return {
-        id: `existing-${idx}`,
-        isRider: Boolean(item.isRider),
-        productId: item.productId,
-        fullName: item.fullName,
-        shortName: item.shortName,
-        type: item.type,
-        premiumTermOrIssueAge: item.premiumTermOrIssueAge,
-        frequencies: item.frequencies,
-        fycRate: item.fycRate,
-        gst: item.gst > 0,
-        premiumRows: fallbackRows,
-        riders: (item.riders || []).map((rider, rIdx) => {
-          const riderRows: DraftPremiumRow[] =
-            rider.quantitiesAndPremiums?.map((entry, entryIdx) => ({
-              id: `existing-rider-${idx}-${rIdx}-row-${entryIdx}`,
-              premium: entry.premium || 0,
-              frequency: normalizeFrequency(entry.frequency),
-              quantity: entry.quantity || 1,
-            })) || [];
-
-          return {
-            id: `existing-rider-${idx}-${rIdx}`,
-            isRider: Boolean(rider.isRider),
-            productId: rider.productId,
-            fullName: rider.fullName,
-            shortName: rider.shortName,
-            premiumTermOrIssueAge: rider.premiumTermOrIssueAge,
-            type: rider.type,
-            frequencies: rider.frequencies,
-            fycRate: rider.fycRate,
-            gst: rider.gst > 0,
-            premiumRows: riderRows.length
-              ? riderRows
-              : [
-                  {
-                    id: `existing-rider-${idx}-${rIdx}-row-0`,
-                    premium: 0,
-                    frequency: "",
-                    quantity: 1,
-                  },
-                ],
-            riders: [],
-          };
-        }),
-      };
-    });
+    const products: DraftProduct[] = existing.items.map((item, idx) =>
+      hydrateDraftProductFromClosingProduct(item, `existing-${idx}`, catalog),
+    );
 
     setDraft({
       sourceId: existing.sourceId || "",
@@ -876,7 +1067,9 @@ const SubmitClosing: Component = () => {
           premiumTermOrIssueAge: p.premiumTermOrIssueAge || undefined,
           fycRate: p.fycRate,
           gst: p.gst ? 9 : 0,
-          quantitiesAndPremiums: p.premiumRows.map((row) => ({
+          quantitiesAndPremiums: consolidatePremiumRowsByAmountAndFrequency(
+            p.premiumRows,
+          ).map((row) => ({
             quantity: row.quantity || 1,
             premium: row.premium,
             frequency: row.frequency || undefined,
@@ -891,7 +1084,9 @@ const SubmitClosing: Component = () => {
               premiumTermOrIssueAge: r.premiumTermOrIssueAge || undefined,
               fycRate: r.fycRate === -1 ? p.fycRate : r.fycRate,
               gst: r.gst ? 9 : 0,
-              quantitiesAndPremiums: r.premiumRows.map((row) => ({
+              quantitiesAndPremiums: consolidatePremiumRowsByAmountAndFrequency(
+                r.premiumRows,
+              ).map((row) => ({
                 quantity: row.quantity || 1,
                 premium: row.premium,
                 frequency: row.frequency || undefined,
@@ -1054,9 +1249,14 @@ const SubmitClosing: Component = () => {
             <Spinner class="h-8 w-8 text-primary" />
           </div>
         </Show>
+        <Show when={editId() && !existingClosing.loading && productsCatalog.loading}>
+          <div class="flex items-center justify-center py-12">
+            <Spinner class="h-8 w-8 text-primary" />
+          </div>
+        </Show>
 
         {/* Content */}
-        <Show when={!editId() || !existingClosing.loading}>
+        <Show when={!editId() || (!existingClosing.loading && !productsCatalog.loading)}>
           <Suspense
             fallback={
               <LoadingState label="Loading..." class="py-12" />
@@ -1288,8 +1488,15 @@ const SubmitClosing: Component = () => {
                       return (
                         <div class="space-y-3">
                           <div>
-                            <div class="text-xl font-condensed font-semibold text-slate-900">
-                              Summary
+                            <div class="flex items-baseline justify-between gap-3">
+                              <div class="text-xl font-condensed font-semibold text-slate-900">
+                                Summary
+                              </div>
+                              <Show when={summaryDateLabel()}>
+                                <div class="text-sm italic text-gray-500">
+                                  {summaryDateLabel()}
+                                </div>
+                              </Show>
                             </div>
                             <div class="mt-3">
                               <ClosingDisplayBlock
@@ -1301,10 +1508,13 @@ const SubmitClosing: Component = () => {
                                   totalFyc: totalFYC,
                                   totalAfyp: totalAFYP,
                                   products: currentDraft.products.map((item) => {
-                                    const totalQty = item.premiumRows.reduce(
-                                      (sum, row) => sum + (row.quantity || 1),
-                                      0,
-                                    );
+                                    const totalQty =
+                                      consolidatePremiumRowsByAmountAndFrequency(
+                                        item.premiumRows,
+                                      ).reduce(
+                                        (sum, row) => sum + row.quantity,
+                                        0,
+                                      );
                                     const baseShortName =
                                       item.shortName || item.fullName;
                                     return {

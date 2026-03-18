@@ -159,7 +159,7 @@ describe("ManageUsers", () => {
       nickname: "OldNick",
       fullName: "Old Full Name",
       email: "old@example.com",
-      accessLevel: "standard",
+      accessLevel: "editor",
       fscCode: "12345",
       agencyCode: "A01",
     };
@@ -177,9 +177,12 @@ describe("ManageUsers", () => {
     const dateInputs = screen.getAllByPlaceholderText(
       "DD/MM/YYYY",
     ) as HTMLInputElement[];
+    const accessSelect = container.querySelectorAll("select")[1] as HTMLSelectElement;
 
     nicknameInput.value = "FreshNick";
     fireEvent.input(nicknameInput);
+    accessSelect.value = "standard";
+    fireEvent.change(accessSelect);
     dateInputs[0].value = "01022000";
     fireEvent.input(dateInputs[0]);
     dateInputs[1].value = "15032024";
@@ -198,7 +201,7 @@ describe("ManageUsers", () => {
       fullName: "Old Full Name",
       fscCode: "12345",
       agencyCode: "A01",
-      accessLevel: "",
+      accessLevel: "standard",
       birthDate: "2000-02-01",
       contractDate: "2024-03-15",
     });

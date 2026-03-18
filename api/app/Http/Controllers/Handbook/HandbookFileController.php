@@ -13,6 +13,19 @@ use Illuminate\Support\Str;
 
 class HandbookFileController extends Controller
 {
+    private const ALLOWED_UPLOAD_MIME_TYPES = [
+        'application/pdf',
+        'image/avif',
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'video/mp4',
+        'video/ogg',
+        'video/quicktime',
+        'video/webm',
+    ];
+
     public function index(): JsonResponse
     {
         $files = HandbookFile::query()
@@ -35,7 +48,11 @@ class HandbookFileController extends Controller
     public function store(Request $request, UploadQuotaService $uploadQuota): JsonResponse
     {
         $payload = $request->validate([
-            'file' => ['required', 'file'],
+            'file' => [
+                'required',
+                'file',
+                'mimetypes:' . implode(',', self::ALLOWED_UPLOAD_MIME_TYPES),
+            ],
         ]);
 
         $file = $payload['file'];

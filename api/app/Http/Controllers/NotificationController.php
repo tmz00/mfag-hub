@@ -16,6 +16,23 @@ use Throwable;
 
 class NotificationController extends Controller
 {
+    private const ALLOWED_ATTACHMENT_MIME_TYPES = [
+        'application/msword',
+        'application/pdf',
+        'application/vnd.ms-excel',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/avif',
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'text/csv',
+        'text/plain',
+    ];
+
     public function __construct(private readonly WebPushService $webPushService)
     {
     }
@@ -164,6 +181,8 @@ class NotificationController extends Controller
             if (!$exists) {
                 return response()->json(['message' => 'Notification not found.'], 404);
             }
+
+            return response()->json(['id' => (string) $id]);
         }
 
         $this->dispatchPushForNotification($id);
@@ -200,7 +219,11 @@ class NotificationController extends Controller
         $this->assertNotificationEditable($id);
 
         $payload = $request->validate([
-            'file' => ['required', 'file'],
+            'file' => [
+                'required',
+                'file',
+                'mimetypes:' . implode(',', self::ALLOWED_ATTACHMENT_MIME_TYPES),
+            ],
         ]);
 
         $file = $payload['file'];

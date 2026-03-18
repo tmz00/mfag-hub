@@ -50,6 +50,9 @@ const getHandbookSearchHref = () => {
   return `/handbook/search?returnTo=${encodeURIComponent(returnTo)}`;
 };
 
+export const getToolsGridColumnsClass = (toolCount: number) =>
+  toolCount % 2 === 0 ? "lg:grid-cols-2" : "lg:grid-cols-3";
+
 const Dashboard: Component = () => {
   const navigate = useNavigate();
 
@@ -59,6 +62,7 @@ const Dashboard: Component = () => {
     "compoundEffect",
   ] as const;
   const quickAccessKeys = ["closings", "team", "products", "admin"] as const;
+  const visibleToolKeys = () => toolKeys;
 
   const [handbookCategories, setHandbookCategories] = createSignal<
     HandbookCategory[]
@@ -276,8 +280,10 @@ const Dashboard: Component = () => {
               <div class="h-0.5 w-6 rounded-full bg-linear-to-r from-primary to-secondary"></div>
               <h2 class="font-condensed font-bold text-xl">TOOLS</h2>
             </div>
-            <div class="grid gap-3 lg:grid-cols-2 md:items-center">
-              <For each={toolKeys}>
+            <div
+              class={`grid gap-3 md:items-center ${getToolsGridColumnsClass(visibleToolKeys().length)}`}
+            >
+              <For each={visibleToolKeys()}>
                 {(key) => {
                   const tool = dashboardOptions[key];
 

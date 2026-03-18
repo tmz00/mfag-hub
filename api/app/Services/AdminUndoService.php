@@ -1767,7 +1767,7 @@ class AdminUndoService
             return null;
         }
 
-        return substr($text, 0, $maxLength);
+        return mb_substr($text, 0, $maxLength, 'UTF-8');
     }
 
     private function firstNonEmpty(array $values): ?string

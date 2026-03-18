@@ -5,7 +5,7 @@
     "dev:web": "npm --prefix web run dev",
     "build:web": "npm --prefix web run build",
     "test:web": "npm --prefix web run test",
-    "dev:api": "cd api && php artisan serve",
+    "dev:api": "bash api/scripts/serve-dev.sh",
     "test:api": "cd api && composer test",
     "dev:api:assets": "npm --prefix api run dev",
     "build:api:assets": "npm --prefix api run build"

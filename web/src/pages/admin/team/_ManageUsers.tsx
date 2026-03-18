@@ -81,7 +81,7 @@ const ManageUsers: Component<ManageUsersProps> = (props) => {
   const [formFullName, setFormFullName] = createSignal("");
   const [formFscCode, setFormFscCode] = createSignal("");
   const [formAgencyCode, setFormAgencyCode] = createSignal("");
-  const [formAccessLevel, setFormAccessLevel] = createSignal("");
+  const [formAccessLevel, setFormAccessLevel] = createSignal("standard");
   const [formBirthDate, setFormBirthDate] = createSignal("");
   const [formContractDate, setFormContractDate] = createSignal("");
 
@@ -142,12 +142,9 @@ const ManageUsers: Component<ManageUsersProps> = (props) => {
     safeString(formAccessLevel()).trim().toLowerCase();
   const normalizeAccessValue = (value?: string) => {
     const normalized = safeString(value).trim().toLowerCase();
-    return normalized === "standard" ? "" : normalized;
+    return normalized || "standard";
   };
-  const normalizedAccess = () => {
-    const value = sanitizedAccess();
-    return value === "standard" ? "" : value;
-  };
+  const normalizedAccess = () => normalizeAccessValue(sanitizedAccess());
 
   const isAddFormValid = () => {
     const email = sanitizedEmail();
@@ -207,7 +204,7 @@ const ManageUsers: Component<ManageUsersProps> = (props) => {
     const base = editingUser();
     if (!base) return false;
     const baseAccess = normalizeAccessValue(base.accessLevel);
-    const currentAccess = sanitizedAccess() || "";
+    const currentAccess = normalizedAccess();
     return (
       sanitizedNickname() !== safeString(base.nickname).trim() ||
       sanitizedEmail() !== safeString(base.email).trim().toLowerCase() ||
@@ -401,7 +398,7 @@ const ManageUsers: Component<ManageUsersProps> = (props) => {
     setFormFullName("");
     setFormFscCode("");
     setFormAgencyCode("");
-    setFormAccessLevel("");
+    setFormAccessLevel("standard");
     setFormBirthDate("");
     setFormContractDate("");
     setFieldErrors({});
@@ -634,7 +631,7 @@ const ManageUsers: Component<ManageUsersProps> = (props) => {
                         }
                         class="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-admin-from focus:outline-none focus:ring-2 focus:ring-admin-from/40"
                       >
-                          <option value="">Standard</option>
+                          <option value="standard">Standard</option>
                           <option value="editor">Editor</option>
                           <option value="admin">Admin</option>
                         </select>
@@ -851,7 +848,7 @@ const ManageUsers: Component<ManageUsersProps> = (props) => {
                     onChange={(e) => setFormAccessLevel(e.currentTarget.value)}
                     class="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-admin-from focus:outline-none focus:ring-2 focus:ring-admin-from/40"
                   >
-                    <option value="">Standard</option>
+                    <option value="standard">Standard</option>
                     <option value="editor">Editor</option>
                     <option value="admin">Admin</option>
                   </select>

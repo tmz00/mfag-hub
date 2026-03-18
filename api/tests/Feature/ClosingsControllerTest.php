@@ -44,6 +44,11 @@ class ClosingsControllerTest extends TestCase
                         ],
                         [
                             'quantity' => 1,
+                            'premium' => 150.55,
+                            'frequency' => 'Annual',
+                        ],
+                        [
+                            'quantity' => 1,
                             'premium' => 0,
                             'frequency' => 'Annual',
                         ],
@@ -116,7 +121,7 @@ class ClosingsControllerTest extends TestCase
         $this->assertSame('20 years', $closing['items'][0]['premiumTermOrIssueAge']);
         $this->assertSame('regular', $closing['items'][0]['type']);
         $this->assertCount(1, $closing['items'][0]['quantitiesAndPremiums']);
-        $this->assertSame(2, $closing['items'][0]['quantitiesAndPremiums'][0]['quantity']);
+        $this->assertSame(3, $closing['items'][0]['quantitiesAndPremiums'][0]['quantity']);
         $this->assertSame(150.55, $closing['items'][0]['quantitiesAndPremiums'][0]['premium']);
         $this->assertCount(1, $closing['items'][0]['riders']);
         $this->assertSame('RIDER-1', $closing['items'][0]['riders'][0]['productId']);
@@ -194,6 +199,154 @@ class ClosingsControllerTest extends TestCase
         $show->assertOk()->assertJsonPath('closing.items.1.isRider', true);
     }
 
+    public function test_store_only_consolidates_duplicate_premium_rows_within_each_item(): void
+    {
+        $owner = $this->createUser('standard');
+        $this->seedSource('warm', 'Warm');
+
+        Sanctum::actingAs($owner);
+
+        $response = $this->postJson('/api/closings', $this->validClosingPayload($owner->fsc_code, [
+            'items' => [
+                [
+                    'productId' => 'PLAN-OPT',
+                    'fullName' => 'Option Plan',
+                    'shortName' => 'Option Plan',
+                    'premiumTermOrIssueAge' => '20 years',
+                    'fycRate' => 10,
+                    'gst' => 0,
+                    'quantitiesAndPremiums' => [
+                        [
+                            'quantity' => 1,
+                            'premium' => 100,
+                            'frequency' => 'Annual',
+                        ],
+                        [
+                            'quantity' => 2,
+                            'premium' => 100,
+                            'frequency' => 'Annual',
+                        ],
+                    ],
+                    'riders' => [],
+                ],
+                [
+                    'productId' => 'PLAN-OPT',
+                    'fullName' => 'Option Plan',
+                    'shortName' => 'Option Plan',
+                    'premiumTermOrIssueAge' => '25 years',
+                    'fycRate' => 10,
+                    'gst' => 0,
+                    'quantitiesAndPremiums' => [
+                        [
+                            'quantity' => 3,
+                            'premium' => 100,
+                            'frequency' => 'Annual',
+                        ],
+                        [
+                            'quantity' => 1,
+                            'premium' => 100,
+                            'frequency' => 'Annual',
+                        ],
+                    ],
+                    'riders' => [],
+                ],
+            ],
+        ]));
+
+        $response->assertCreated();
+        $closingId = (int) $response->json('id');
+
+        $this->assertDatabaseCount('closing_items', 2);
+        $this->assertDatabaseCount('closing_item_premiums', 2);
+
+        $show = $this->getJson("/api/closings/{$closingId}");
+        $show->assertOk();
+        $this->assertCount(2, $show->json('closing.items'));
+        $this->assertSame('20 years', $show->json('closing.items.0.premiumTermOrIssueAge'));
+        $this->assertSame([
+            [
+                'quantity' => 3,
+                'premium' => 100,
+                'frequency' => 'Annual',
+            ],
+        ], $show->json('closing.items.0.quantitiesAndPremiums'));
+        $this->assertSame('25 years', $show->json('closing.items.1.premiumTermOrIssueAge'));
+        $this->assertSame([
+            [
+                'quantity' => 4,
+                'premium' => 100,
+                'frequency' => 'Annual',
+            ],
+        ], $show->json('closing.items.1.quantitiesAndPremiums'));
+    }
+
+    public function test_store_consolidates_duplicate_items_with_same_identity_into_one_item(): void
+    {
+        $owner = $this->createUser('standard');
+        $this->seedSource('warm', 'Warm');
+
+        Sanctum::actingAs($owner);
+
+        $response = $this->postJson('/api/closings', $this->validClosingPayload($owner->fsc_code, [
+            'items' => [
+                [
+                    'productId' => '63',
+                    'fullName' => 'Pro Lifetime Protector (II)',
+                    'shortName' => 'PLP',
+                    'premiumTermOrIssueAge' => '0 - 60',
+                    'fycRate' => 50,
+                    'gst' => 0,
+                    'quantitiesAndPremiums' => [
+                        [
+                            'quantity' => 1,
+                            'premium' => 3600,
+                            'frequency' => 'Annual',
+                        ],
+                    ],
+                    'riders' => [],
+                ],
+                [
+                    'productId' => '63',
+                    'fullName' => 'Pro Lifetime Protector (II)',
+                    'shortName' => 'PLP',
+                    'premiumTermOrIssueAge' => '0 - 60',
+                    'fycRate' => 50,
+                    'gst' => 0,
+                    'quantitiesAndPremiums' => [
+                        [
+                            'quantity' => 1,
+                            'premium' => 4000,
+                            'frequency' => 'Annual',
+                        ],
+                    ],
+                    'riders' => [],
+                ],
+            ],
+        ]));
+
+        $response->assertCreated();
+        $closingId = (int) $response->json('id');
+
+        $this->assertDatabaseCount('closing_items', 1);
+        $this->assertDatabaseCount('closing_item_premiums', 2);
+
+        $show = $this->getJson("/api/closings/{$closingId}");
+        $show->assertOk();
+        $this->assertCount(1, $show->json('closing.items'));
+        $this->assertSame([
+            [
+                'quantity' => 1,
+                'premium' => 3600,
+                'frequency' => 'Annual',
+            ],
+            [
+                'quantity' => 1,
+                'premium' => 4000,
+                'frequency' => 'Annual',
+            ],
+        ], $show->json('closing.items.0.quantitiesAndPremiums'));
+    }
+
     public function test_standard_users_cannot_update_or_delete_unowned_closings(): void
     {
         $owner = $this->createUser('standard');
@@ -236,6 +389,110 @@ class ClosingsControllerTest extends TestCase
             collect($response->json('closings'))->pluck('id')->all()
         );
         $this->assertNotSame((string) $excludedId, $response->json('closings.0.id'));
+    }
+
+    public function test_show_consolidates_legacy_duplicate_premium_rows(): void
+    {
+        $owner = $this->createUser('standard');
+        $this->seedSource('warm', 'Warm');
+        Sanctum::actingAs($owner);
+
+        $closingId = $this->insertClosing($owner, [
+            'premium_rows' => [
+                [
+                    'quantity' => 1,
+                    'premium' => 100,
+                    'frequency' => 'Annual',
+                ],
+                [
+                    'quantity' => 2,
+                    'premium' => 100,
+                    'frequency' => 'Annual',
+                ],
+                [
+                    'quantity' => 1,
+                    'premium' => 50,
+                    'frequency' => 'Quarterly',
+                ],
+            ],
+        ]);
+
+        $response = $this->getJson("/api/closings/{$closingId}");
+
+        $response->assertOk();
+        $this->assertSame([
+            [
+                'quantity' => 3,
+                'premium' => 100,
+                'frequency' => 'Annual',
+            ],
+            [
+                'quantity' => 1,
+                'premium' => 50,
+                'frequency' => 'Quarterly',
+            ],
+        ], $response->json('closing.items.0.quantitiesAndPremiums'));
+    }
+
+    public function test_show_consolidates_legacy_duplicate_items_with_same_identity(): void
+    {
+        $owner = $this->createUser('standard');
+        $this->seedSource('warm', 'Warm');
+        Sanctum::actingAs($owner);
+
+        $closingId = $this->insertClosing($owner, [
+            'premium_rows' => [
+                [
+                    'quantity' => 1,
+                    'premium' => 3600,
+                    'frequency' => 'Annual',
+                ],
+            ],
+        ]);
+
+        $now = now();
+        $duplicateItemId = DB::table('closing_items')->insertGetId([
+            'closing_id' => $closingId,
+            'parent_item_id' => null,
+            'is_rider' => false,
+            'product_id' => 'PLAN-BASE',
+            'full_name' => 'Base Plan',
+            'short_name' => 'Base',
+            'premium_term_or_issue_age' => null,
+            'type_key' => 'regular',
+            'fyc_rate' => 10,
+            'gst' => 0,
+            'position' => 1,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('closing_item_premiums')->insert([
+            'closing_item_id' => $duplicateItemId,
+            'quantity' => 1,
+            'premium' => 4000,
+            'frequency' => 'Annual',
+            'position' => 0,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $response = $this->getJson("/api/closings/{$closingId}");
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('closing.items'));
+        $this->assertSame([
+            [
+                'quantity' => 1,
+                'premium' => 3600,
+                'frequency' => 'Annual',
+            ],
+            [
+                'quantity' => 1,
+                'premium' => 4000,
+                'frequency' => 'Annual',
+            ],
+        ], $response->json('closing.items.0.quantitiesAndPremiums'));
     }
 
     public function test_admin_can_replace_month_data_and_read_backups(): void
@@ -407,6 +664,14 @@ class ClosingsControllerTest extends TestCase
             'updated_at' => $now,
         ]);
 
+        $premiumRows = $overrides['premium_rows'] ?? [
+            [
+                'quantity' => 1,
+                'premium' => 100,
+                'frequency' => 'Annual',
+            ],
+        ];
+
         $itemId = DB::table('closing_items')->insertGetId([
             'closing_id' => $closingId,
             'parent_item_id' => null,
@@ -423,15 +688,17 @@ class ClosingsControllerTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        DB::table('closing_item_premiums')->insert([
-            'closing_item_id' => $itemId,
-            'quantity' => 1,
-            'premium' => 100,
-            'frequency' => 'Annual',
-            'position' => 0,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        foreach (array_values($premiumRows) as $position => $premiumRow) {
+            DB::table('closing_item_premiums')->insert([
+                'closing_item_id' => $itemId,
+                'quantity' => max(1, (int) ($premiumRow['quantity'] ?? 1)),
+                'premium' => $premiumRow['premium'] ?? 0,
+                'frequency' => $premiumRow['frequency'] ?? null,
+                'position' => $position,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
 
         return (int) $closingId;
     }

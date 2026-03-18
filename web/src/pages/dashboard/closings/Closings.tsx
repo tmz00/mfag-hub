@@ -58,6 +58,7 @@ import {
   calculateProductFyc,
   countInvalidPremiumFrequencyRows,
 } from "../../../utils/closingMetrics";
+import { consolidatePremiumRowsByAmountAndFrequency } from "../../../utils/closingPremiumRows";
 import { appendAttachedSuffixesByRiderProductId } from "../../../utils/attachedSuffix";
 import ClosingDisplayBlock from "./_ClosingDisplayBlock";
 import {
@@ -213,10 +214,9 @@ function toClosingDisplayModel(
     totalFyc: fyc,
     totalAfyp: afyp,
     products: closing.items.map((item: any) => {
-      const totalQty = item.quantitiesAndPremiums.reduce(
-        (sum: number, qp: any) => sum + qp.quantity,
-        0,
-      );
+      const totalQty = consolidatePremiumRowsByAmountAndFrequency(
+        item.quantitiesAndPremiums || [],
+      ).reduce((sum, qp) => sum + qp.quantity, 0);
       const itemFyc = calculateClosingFycAndCaseCount([item]).fyc;
       return {
         quantity: totalQty,

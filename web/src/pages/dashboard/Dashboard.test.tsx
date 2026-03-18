@@ -232,4 +232,11 @@ describe("Dashboard page", () => {
       expect(screen.getByText("Unable to load handbook categories")).toBeTruthy();
     });
   });
+
+  it("uses 2 columns for even tool counts and 3 columns for odd tool counts", async () => {
+    const { getToolsGridColumnsClass } = await import("./Dashboard");
+
+    expect(getToolsGridColumnsClass(4)).toBe("lg:grid-cols-2");
+    expect(getToolsGridColumnsClass(3)).toBe("lg:grid-cols-3");
+  });
 });

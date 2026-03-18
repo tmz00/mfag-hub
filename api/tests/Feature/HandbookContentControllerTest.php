@@ -233,8 +233,66 @@ class HandbookContentControllerTest extends TestCase
         ]);
     }
 
+    public function test_handbook_content_is_sanitized_on_save_and_read(): void
+    {
+        $editor = $this->createUser('editor', [
+            'email' => 'sanitize@example.test',
+            'fsc_code' => '30009',
+        ]);
+        Sanctum::actingAs($editor);
+
+        $this->putJson('/api/handbook/content', [
+            'payload' => [
+                [
+                    'category' => 'Security',
+                    'content' => '<p onclick="alert(1)">Safe</p><script>alert(1)</script><a href="javascript:alert(2)">Bad</a><a href="https://example.test" target="_blank">Good</a><details open><summary>Q</summary><p><img src="/api/handbook/files/7" onerror="alert(3)"></p></details>',
+                ],
+            ],
+        ])->assertOk();
+
+        $stored = (string) DB::table('handbook_categories')->value('content');
+        $this->assertSame(
+            '<p>Safe</p><a>Bad</a><a href="https://example.test" target="_blank" rel="noopener noreferrer">Good</a><details open="open"><summary>Q</summary><p><img src="/api/handbook/files/7"></p></details>',
+            $stored
+        );
+
+        $this->getJson('/api/handbook/content')
+            ->assertOk()
+            ->assertJsonPath('payload.0.content', $stored);
+    }
+
+    public function test_handbook_iframes_are_limited_to_allowlisted_embed_hosts(): void
+    {
+        $editor = $this->createUser('editor', [
+            'email' => 'iframe-sanitize@example.test',
+            'fsc_code' => '30010',
+        ]);
+        Sanctum::actingAs($editor);
+
+        $this->putJson('/api/handbook/content', [
+            'payload' => [
+                [
+                    'category' => 'Embeds',
+                    'content' => '<p>Allowed</p><iframe src="https://www.youtube.com/embed/demo123" allow="fullscreen"></iframe><iframe src="https://example.test/embed/demo123" allow="fullscreen"></iframe><iframe src="/internal/embed/demo123"></iframe>',
+                ],
+            ],
+        ])->assertOk();
+
+        $stored = (string) DB::table('handbook_categories')->value('content');
+
+        $this->assertStringContainsString('https://www.youtube.com/embed/demo123', $stored);
+        $this->assertStringContainsString('allowfullscreen="allowfullscreen"', $stored);
+        $this->assertStringNotContainsString('https://example.test/embed/demo123', $stored);
+        $this->assertStringNotContainsString('/internal/embed/demo123', $stored);
+
+        $this->getJson('/api/handbook/content')
+            ->assertOk()
+            ->assertJsonPath('payload.0.content', $stored);
+    }
+
     public function test_editor_update_cleans_up_unreferenced_handbook_files(): void
     {
+        $this->withoutDefer();
         Storage::fake('local');
 
         $editor = $this->createUser('editor', [

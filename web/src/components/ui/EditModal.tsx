@@ -63,6 +63,7 @@ export const EditModal: Component<EditModalProps> = (props) => {
   let historyEntryToken: string | null = null;
   let onPopState: (() => void) | undefined;
   let resolveConfirm: ((value: boolean) => void) | null = null;
+  let confirmTimeoutId: number | null = null;
 
   const confirmDiscard = () => {
     setConfirmOpen(true);
@@ -111,7 +112,8 @@ export const EditModal: Component<EditModalProps> = (props) => {
       return;
     }
     event.preventDefault();
-    setTimeout(() => {
+    confirmTimeoutId = window.setTimeout(() => {
+      confirmTimeoutId = null;
       confirmDiscard().then((confirmed) => {
         if (!confirmed) return;
         navigatedAway = true;
@@ -171,6 +173,13 @@ export const EditModal: Component<EditModalProps> = (props) => {
   });
 
   onCleanup(() => {
+    if (confirmTimeoutId !== null) {
+      window.clearTimeout(confirmTimeoutId);
+      confirmTimeoutId = null;
+    }
+    resolveConfirm?.(false);
+    resolveConfirm = null;
+
     if (props.manageHistoryEntry) {
       if (onPopState) {
         window.removeEventListener("popstate", onPopState);

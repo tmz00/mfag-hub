@@ -9,6 +9,7 @@ import {
   setSelectedPeriod,
 } from "../_closingsListViewState";
 import type { ClosingProduct } from "../../../../services/closingsService";
+import type { ProductCatalog } from "../../../../services/productsService";
 import {
   calculateProductFyc as calculateSharedProductFyc,
   calculateProductAfyp as calculateSharedProductAfyp,
@@ -247,6 +248,12 @@ vi.mock("./PlansSection", () => ({
                     frequency: "Annual",
                     quantity: 2,
                   },
+                  {
+                    id: "row-2",
+                    premium: 100,
+                    frequency: "Annual",
+                    quantity: 1,
+                  },
                 ],
                 riders: [
                   {
@@ -263,6 +270,12 @@ vi.mock("./PlansSection", () => ({
                         premium: 20,
                         frequency: "Annual",
                         quantity: 1,
+                      },
+                      {
+                        id: "rider-row-2",
+                        premium: 20,
+                        frequency: "Annual",
+                        quantity: 2,
                       },
                     ],
                     riders: [],
@@ -285,6 +298,8 @@ import SubmitClosing, {
   calculateProductFYC,
   calculateProductFYP,
   calculateTotals,
+  getSummaryDateLabel,
+  hydrateDraftProductFromClosingProduct,
   type ClosingDraft,
   type DraftProduct,
 } from "./SubmitClosing";
@@ -607,7 +622,7 @@ describe("SubmitClosing", () => {
         gst: 0,
         quantitiesAndPremiums: [
           {
-            quantity: 2,
+            quantity: 3,
             premium: 100,
             frequency: "Annual",
           },
@@ -622,7 +637,7 @@ describe("SubmitClosing", () => {
             gst: 0,
             quantitiesAndPremiums: [
               {
-                quantity: 1,
+                quantity: 3,
                 premium: 20,
                 frequency: "Annual",
               },
@@ -697,5 +712,205 @@ describe("SubmitClosing", () => {
 
     expect(patched[0].riders[0].attachedSuffix).toBe("[B]");
     expect(patched[0].riders[1].attachedSuffix).toBe("[S]");
+  });
+
+  it("hydrates edit-mode products with current catalog options, fyc rates and attachable riders", () => {
+    const existingProduct: ClosingProduct = {
+      productId: "PLAN-1",
+      fullName: "Starter Plan",
+      shortName: "Legacy Starter",
+      type: "regular",
+      premiumTermOrIssueAge: "Age 30",
+      fycRate: 0,
+      gst: 0,
+      quantitiesAndPremiums: [
+        { quantity: 1, premium: 100, frequency: "Annual" },
+      ],
+      riders: [
+        {
+          isRider: true,
+          productId: "RIDER-1",
+          fullName: "Booster Rider",
+          shortName: "Booster",
+          premiumTermOrIssueAge: "Level A",
+          fycRate: 0,
+          gst: 0,
+          quantitiesAndPremiums: [
+            { quantity: 1, premium: 20, frequency: "Annual" },
+          ],
+          riders: [],
+        },
+      ],
+    };
+
+    const catalog: ProductCatalog = {
+      basePlans: [
+        {
+          id: "PLAN-1",
+          fullName: "Starter Plan",
+          shortName: "Starter",
+          optionTitle: "Issue Age",
+          options: [
+            { label: "Age 30", fycRate: "24" },
+            { label: "Age 40", fycRate: "18" },
+          ],
+          fycRate: "18",
+          attachableRiders: ["RIDER-1", "RIDER-2"],
+        },
+      ],
+      riders: [
+        {
+          id: "RIDER-1",
+          fullName: "Booster Rider",
+          shortName: "Booster",
+          attachedSuffix: "[B]",
+          optionTitle: "Benefit Level",
+          options: [{ label: "Level A", fycRate: "12" }],
+          fycRate: "12",
+        },
+      ],
+    };
+
+    const hydrated = hydrateDraftProductFromClosingProduct(
+      existingProduct,
+      "existing-0",
+      catalog,
+    );
+
+    expect(hydrated.shortName).toBe("Legacy Starter");
+    expect(hydrated.shortNameManuallyEdited).toBe(true);
+    expect(hydrated.optionTitle).toBe("Issue Age");
+    expect(hydrated.options).toEqual(catalog.basePlans?.[0].options);
+    expect(hydrated.fycRate).toBe(24);
+    expect(hydrated.attachableRiders).toEqual(["RIDER-1", "RIDER-2"]);
+
+    expect(hydrated.riders[0].optionTitle).toBe("Benefit Level");
+    expect(hydrated.riders[0].options).toEqual(catalog.riders?.[0].options);
+    expect(hydrated.riders[0].fycRate).toBe(12);
+    expect(hydrated.riders[0].attachedSuffix).toBe("[B]");
+  });
+
+  it("treats catalog and suffix-derived short names as auto-managed during edit hydration", () => {
+    const catalog: ProductCatalog = {
+      basePlans: [
+        {
+          id: "PLAN-1",
+          fullName: "Starter Plan",
+          shortName: "Starter",
+          fycRate: "18",
+          attachableRiders: ["RIDER-1"],
+        },
+      ],
+      riders: [
+        {
+          id: "RIDER-1",
+          fullName: "Value-Add Rider",
+          shortName: "VH",
+          attachedSuffix: "+ VH",
+          fycRate: "12",
+        },
+      ],
+    };
+
+    const buildExistingProduct = (shortName: string): ClosingProduct => ({
+      productId: "PLAN-1",
+      fullName: "Starter Plan",
+      shortName,
+      type: "regular",
+      fycRate: 18,
+      gst: 0,
+      quantitiesAndPremiums: [{ quantity: 1, premium: 100, frequency: "Annual" }],
+      riders: [
+        {
+          isRider: true,
+          productId: "RIDER-1",
+          fullName: "Value-Add Rider",
+          shortName: "VH",
+          fycRate: 12,
+          gst: 0,
+          quantitiesAndPremiums: [
+            { quantity: 1, premium: 20, frequency: "Annual" },
+          ],
+          riders: [],
+        },
+      ],
+    });
+
+    const unsuffixed = hydrateDraftProductFromClosingProduct(
+      buildExistingProduct("Starter"),
+      "existing-unsuffixed",
+      catalog,
+    );
+    const suffixed = hydrateDraftProductFromClosingProduct(
+      buildExistingProduct("Starter + VH"),
+      "existing-suffixed",
+      catalog,
+    );
+
+    expect(unsuffixed.shortName).toBe("Starter + VH");
+    expect(unsuffixed.shortNameManuallyEdited).toBe(false);
+    expect(suffixed.shortName).toBe("Starter + VH");
+    expect(suffixed.shortNameManuallyEdited).toBe(false);
+  });
+
+  it("prepends the saved selected option when it no longer exists in the current catalog", () => {
+    const existingProduct: ClosingProduct = {
+      productId: "PLAN-1",
+      fullName: "Starter Plan",
+      shortName: "Starter",
+      type: "regular",
+      premiumTermOrIssueAge: "Legacy 20Y",
+      fycRate: 33,
+      gst: 0,
+      quantitiesAndPremiums: [
+        { quantity: 1, premium: 100, frequency: "Annual" },
+      ],
+      riders: [],
+    };
+
+    const catalog: ProductCatalog = {
+      basePlans: [
+        {
+          id: "PLAN-1",
+          fullName: "Starter Plan",
+          shortName: "Starter",
+          optionTitle: "Premium Term",
+          options: [{ label: "25Y", fycRate: "20" }],
+          fycRate: "20",
+        },
+      ],
+      riders: [],
+    };
+
+    const hydrated = hydrateDraftProductFromClosingProduct(
+      existingProduct,
+      "existing-0",
+      catalog,
+    );
+
+    expect(hydrated.optionTitle).toBe("Premium Term");
+    expect(hydrated.options?.[0]).toEqual({
+      label: "Legacy 20Y",
+      fycRate: "33",
+    });
+    expect(hydrated.fycRate).toBe(33);
+  });
+
+  it("includes the submitted date label when it is not today", () => {
+    expect(
+      getSummaryDateLabel(
+        new Date("2026-03-11T10:30:00.000Z"),
+        new Date("2026-03-18T09:00:00.000Z"),
+      ),
+    ).toBe("11 Mar 2026");
+  });
+
+  it("hides the submitted date label when it is today", () => {
+    expect(
+      getSummaryDateLabel(
+        new Date("2026-03-18T10:30:00.000Z"),
+        new Date("2026-03-18T09:00:00.000Z"),
+      ),
+    ).toBe("");
   });
 });

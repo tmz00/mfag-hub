@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Mail\LoginOtpMail;
 use App\Models\AuthRefreshToken;
 use App\Models\LoginOtp;
 use App\Models\User;
 use App\Services\Auth\OtpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -36,6 +38,9 @@ class OtpAuthControllerTest extends TestCase
             'user_id' => $user->id,
             'attempts' => 0,
         ]);
+        Mail::assertSent(LoginOtpMail::class, function (LoginOtpMail $mail): bool {
+            return $mail->hasTo('agent@example.test');
+        });
     }
 
     public function test_request_otp_rejects_invalid_or_inactive_user(): void
@@ -58,6 +63,7 @@ class OtpAuthControllerTest extends TestCase
         $this->assertDatabaseMissing('login_otps', [
             'user_id' => $inactive->id,
         ]);
+        Mail::assertNothingSent();
     }
 
     public function test_request_otp_is_rate_limited_after_five_attempts(): void
@@ -215,6 +221,97 @@ class OtpAuthControllerTest extends TestCase
         $this->assertSame(1, AuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->count());
     }
 
+    public function test_refresh_revokes_legacy_access_tokens_when_session_key_is_missing(): void
+    {
+        $user = $this->createUser([
+            'email' => 'legacy-refresh@example.test',
+            'fsc_code' => '12345',
+        ]);
+        $user->createToken('api-login');
+        $incoming = str_repeat('l', 96);
+        $row = AuthRefreshToken::query()->create([
+            'user_id' => $user->id,
+            'token_hash' => hash('sha256', $incoming),
+            'session_key' => null,
+            'expires_at' => now()->addDays(3),
+            'last_used_at' => null,
+            'revoked_at' => null,
+        ]);
+
+        $response = $this->postJson('/api/auth/refresh', [
+            'refreshToken' => $incoming,
+        ]);
+
+        $response->assertOk();
+
+        $tokenNames = DB::table('personal_access_tokens')
+            ->orderBy('id')
+            ->pluck('name')
+            ->map(static fn ($value): string => (string) $value)
+            ->all();
+        $this->assertCount(1, $tokenNames);
+        $this->assertStringStartsWith('api-login:', $tokenNames[0]);
+
+        $row->refresh();
+        $this->assertNotNull($row->last_used_at);
+        $this->assertNotNull($row->revoked_at);
+        $this->assertSame(
+            1,
+            AuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->count()
+        );
+        $this->assertNotSame(
+            '',
+            (string) AuthRefreshToken::query()
+                ->where('user_id', $user->id)
+                ->whereNull('revoked_at')
+                ->value('session_key')
+        );
+    }
+
+    public function test_refresh_reuses_the_same_session_key_and_replaces_old_access_token(): void
+    {
+        $otp = '123456';
+        $user = $this->createUser([
+            'email' => 'refresh-session@example.test',
+            'fsc_code' => '12345',
+        ]);
+        $this->seedLoginOtp($user, $otp, 0, now()->addMinutes(5));
+
+        $verify = $this->postJson('/api/auth/verify-otp', [
+            'email' => 'refresh-session@example.test',
+            'otp' => $otp,
+        ]);
+        $verify->assertOk();
+
+        $initialTokenName = (string) DB::table('personal_access_tokens')->value('name');
+        $initialSessionKey = (string) AuthRefreshToken::query()
+            ->where('user_id', $user->id)
+            ->whereNull('revoked_at')
+            ->value('session_key');
+
+        $refresh = $this->postJson('/api/auth/refresh', [
+            'refreshToken' => (string) $verify->json('refreshToken'),
+        ]);
+        $refresh->assertOk();
+
+        $this->assertSame(1, DB::table('personal_access_tokens')->count());
+        $this->assertSame(
+            $initialTokenName,
+            (string) DB::table('personal_access_tokens')->value('name')
+        );
+        $this->assertSame(
+            1,
+            AuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->count()
+        );
+        $this->assertSame(
+            $initialSessionKey,
+            (string) AuthRefreshToken::query()
+                ->where('user_id', $user->id)
+                ->whereNull('revoked_at')
+                ->value('session_key')
+        );
+    }
+
     public function test_refresh_rejects_expired_token_and_revokes_row(): void
     {
         $user = $this->createUser([
@@ -279,6 +376,64 @@ class OtpAuthControllerTest extends TestCase
         $this->assertSame(
             0,
             AuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->count()
+        );
+    }
+
+    public function test_logout_revokes_only_the_current_session_when_multiple_sessions_exist(): void
+    {
+        $user = $this->createUser([
+            'email' => 'multi-session@example.test',
+            'fsc_code' => '12345',
+        ]);
+
+        $this->seedLoginOtp($user, '111111', 0, now()->addMinutes(5));
+        $firstVerify = $this->postJson('/api/auth/verify-otp', [
+            'email' => 'multi-session@example.test',
+            'otp' => '111111',
+        ]);
+        $firstVerify->assertOk();
+        $firstTokenName = (string) DB::table('personal_access_tokens')
+            ->orderBy('id')
+            ->value('name');
+
+        $this->seedLoginOtp($user, '222222', 0, now()->addMinutes(5));
+        $secondVerify = $this->postJson('/api/auth/verify-otp', [
+            'email' => 'multi-session@example.test',
+            'otp' => '222222',
+        ]);
+        $secondVerify->assertOk();
+
+        $tokenNames = DB::table('personal_access_tokens')
+            ->orderBy('id')
+            ->pluck('name')
+            ->map(static fn ($value): string => (string) $value)
+            ->all();
+
+        $this->assertCount(2, $tokenNames);
+        $remainingTokenName = collect($tokenNames)
+            ->first(static fn (string $name): bool => $name !== $firstTokenName);
+        $this->assertNotNull($remainingTokenName);
+        $this->assertSame(
+            2,
+            AuthRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->count()
+        );
+
+        $this->withHeader('Authorization', 'Bearer ' . (string) $firstVerify->json('token'))
+            ->postJson('/api/auth/logout')
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertSame(1, DB::table('personal_access_tokens')->count());
+        $this->assertSame(
+            (string) $remainingTokenName,
+            (string) DB::table('personal_access_tokens')->value('name')
+        );
+        $this->assertSame(
+            substr((string) $remainingTokenName, strlen('api-login:')),
+            (string) AuthRefreshToken::query()
+                ->where('user_id', $user->id)
+                ->whereNull('revoked_at')
+                ->value('session_key')
         );
     }
 

@@ -1,5 +1,6 @@
 import {
   Component,
+  Index,
   createEffect,
   createMemo,
   createResource,
@@ -18,13 +19,10 @@ import {
 } from "../../../../components/ui";
 import {
   TbOutlinePlus,
+  TbOutlinePencil,
   TbOutlineTrash,
   TbOutlinePuzzle,
-  TbOutlinePencil,
   TbOutlineSearch,
-  TbOutlineCheck,
-  TbOutlineCurrency,
-  TbOutlineFileDollar,
 } from "solid-icons/tb";
 import {
   productsService,
@@ -35,9 +33,10 @@ import {
   type PremiumFrequency,
   premiumFrequencyLabels,
 } from "../../../../services/closingsService";
-import type { DraftProduct } from "./SubmitClosing";
+import type { DraftProduct, DraftPremiumRow } from "./SubmitClosing";
 import ProductPicker, { type SelectedProduct } from "./ProductPicker";
 import { classificationBadgeClass } from "../../../../utils/productBadges";
+import { appendAttachedSuffixesFromRiders } from "../../../../utils/attachedSuffix";
 import {
   cloneDraftProduct,
   isProductComplete,
@@ -61,6 +60,72 @@ import {
   setPendingScrollToAddNewBusiness,
 } from "./_submitStore";
 
+type PremiumManagerState = {
+  scope: "product" | "rider";
+  riderIndex?: number;
+  rows: PremiumManagerRowDraft[];
+  initialRowsSignature: string;
+};
+
+type PremiumManagerRowDraft = {
+  id: string;
+  quantity: string;
+  premium: string;
+  frequency: PremiumFrequency | "";
+};
+
+const serializePremiumRowDrafts = (rows: PremiumManagerRowDraft[]) =>
+  JSON.stringify(
+    rows.map(({ quantity, premium, frequency }) => ({
+      quantity: quantity.trim(),
+      premium: premium.trim(),
+      frequency,
+    })),
+  );
+
+type PremiumManagerTarget = {
+  scope: "product" | "rider";
+  riderIndex?: number;
+};
+
+const ensurePremiumManagerRows = (
+  rows: PremiumManagerRowDraft[],
+  fallbackFactory: () => PremiumManagerRowDraft,
+) => (rows.length > 0 ? rows : [fallbackFactory()]);
+
+const normalizePremiumRows = (rows: DraftPremiumRow[]): DraftPremiumRow[] => {
+  const normalized: DraftPremiumRow[] = [];
+  const rowsByKey = new Map<string, DraftPremiumRow>();
+
+  for (const row of rows) {
+    const quantity = Math.max(1, Number(row.quantity) || 1);
+    const key = `${Number(row.premium) || 0}::${row.frequency || ""}`;
+    const existing = rowsByKey.get(key);
+    if (existing) {
+      existing.quantity += quantity;
+      continue;
+    }
+
+    const nextRow = {
+      ...row,
+      quantity,
+    };
+    rowsByKey.set(key, nextRow);
+    normalized.push(nextRow);
+  }
+
+  return normalized;
+};
+
+const normalizeProductPremiumRows = (product: DraftProduct): DraftProduct => ({
+  ...product,
+  premiumRows: normalizePremiumRows(product.premiumRows),
+  riders: product.riders.map((rider) => ({
+    ...rider,
+    premiumRows: normalizePremiumRows(rider.premiumRows),
+  })),
+});
+
 const PlanEditor: Component = () => {
   const navigate = useNavigate();
   const navigateBack = (fallbackHref: string) => {
@@ -82,32 +147,30 @@ const PlanEditor: Component = () => {
     return null as any;
   }
 
-  const [editingProduct, setEditingProduct] = createSignal<DraftProduct | null>(
+  const normalizedPlanProduct = normalizeProductPremiumRows(
     cloneDraftProduct(planData.product),
   );
+  const [editingProduct, setEditingProduct] = createSignal<DraftProduct | null>(
+    normalizedPlanProduct,
+  );
   const [originalEditingProduct, setOriginalEditingProduct] =
-    createSignal<DraftProduct | null>(
-      cloneDraftProduct(planData.product),
-    );
-  const [rowEditor, setRowEditor] = createSignal<{
-    scope: "product" | "rider";
-    riderIndex?: number;
-    rowIndex: number | null;
-    quantity: string;
-    premium: string;
-    frequency: PremiumFrequency | "";
-  } | null>(null);
+    createSignal<DraftProduct | null>(cloneDraftProduct(normalizedPlanProduct));
+  const [rowEditor, setRowEditor] = createSignal<PremiumManagerState | null>(
+    null,
+  );
   const [rowEditorError, setRowEditorError] = createSignal("");
   const [showPicker, setShowPicker] = createSignal(false);
   const [pickerMode, setPickerMode] = createSignal<"replace" | "rider">(
     "replace",
   );
-  const [pendingScrollToAddRider, setPendingScrollToAddRider] =
-    createSignal<string | null>(null);
+  const [pendingScrollToAddRider, setPendingScrollToAddRider] = createSignal<
+    string | null
+  >(null);
 
   // Row animation feedback
-  const [highlightedRowId, setHighlightedRowId] = createSignal<string | null>(null);
-  const [removingRowId, setRemovingRowId] = createSignal<string | null>(null);
+  const [highlightedRowId, setHighlightedRowId] = createSignal<string | null>(
+    null,
+  );
   let highlightTimeout: number | undefined;
 
   const highlightRow = (id: string) => {
@@ -117,14 +180,22 @@ const PlanEditor: Component = () => {
   };
 
   // Rider card animation feedback
-  const [highlightedRiderId, setHighlightedRiderId] = createSignal<string | null>(null);
-  const [removingRiderId, setRemovingRiderId] = createSignal<string | null>(null);
+  const [highlightedRiderId, setHighlightedRiderId] = createSignal<
+    string | null
+  >(null);
+  const [removingRiderId, setRemovingRiderId] = createSignal<string | null>(
+    null,
+  );
   let riderHighlightTimeout: number | undefined;
 
   const highlightRider = (id: string) => {
-    if (riderHighlightTimeout !== undefined) clearTimeout(riderHighlightTimeout);
+    if (riderHighlightTimeout !== undefined)
+      clearTimeout(riderHighlightTimeout);
     setHighlightedRiderId(id);
-    riderHighlightTimeout = window.setTimeout(() => setHighlightedRiderId(null), 1800);
+    riderHighlightTimeout = window.setTimeout(
+      () => setHighlightedRiderId(null),
+      1800,
+    );
   };
 
   // Load catalog data
@@ -191,8 +262,8 @@ const PlanEditor: Component = () => {
   createEffect(() => {
     const current = editingProduct();
     if (!current) return;
-    const updated = applySingleFrequency(current);
-    if (updated !== current) {
+    const updated = applySingleFrequency(normalizeProductPremiumRows(current));
+    if (!areProductsEqual(current, updated)) {
       setEditingProduct(updated);
     }
   });
@@ -230,18 +301,39 @@ const PlanEditor: Component = () => {
     return shortName || null;
   };
 
+  const getDefaultShortNameForProduct = (product: DraftProduct): string => {
+    const catalogDefault = getCatalogShortNameForProduct(product);
+    const fallbackDefault =
+      String(product.shortName || "").trim() ||
+      String(planData.product.shortName || "").trim();
+    const baseShortName = (catalogDefault ?? fallbackDefault).trim();
+    if (!baseShortName || product.isRider) return baseShortName;
+    return appendAttachedSuffixesFromRiders(baseShortName, product.riders);
+  };
+
+  const getAutoManagedShortNamesForProduct = (product: DraftProduct): Set<string> => {
+    const defaultShortName = getDefaultShortNameForProduct(product).trim();
+    const baseShortName = (
+      getCatalogShortNameForProduct(product) ??
+      String(planData.product.shortName || "")
+    ).trim();
+    return new Set([baseShortName, defaultShortName].filter(Boolean));
+  };
+
   const buildShortNameState = (
     product: DraftProduct,
     value: string,
   ): Pick<DraftProduct, "shortName" | "shortNameManuallyEdited"> => {
-    const catalogDefault = getCatalogShortNameForProduct(product);
-    const fallbackDefault = String(planData.product.shortName || "");
-    const defaultShortName = (catalogDefault ?? fallbackDefault).trim();
+    const autoManagedShortNames = getAutoManagedShortNamesForProduct(product);
+    const defaultShortName = getDefaultShortNameForProduct(product);
     const normalizedValue = value.trim();
 
     return {
       shortName: value,
-      shortNameManuallyEdited: normalizedValue !== defaultShortName,
+      shortNameManuallyEdited:
+        autoManagedShortNames.size > 0
+          ? !autoManagedShortNames.has(normalizedValue)
+          : normalizedValue !== defaultShortName,
     };
   };
 
@@ -270,6 +362,18 @@ const PlanEditor: Component = () => {
       return { ...current, ...nextState };
     });
   };
+
+  createEffect(() => {
+    const current = editingProduct();
+    if (!current || current.isRider || current.shortNameManuallyEdited) return;
+    const defaultShortName = getDefaultShortNameForProduct(current);
+    if (String(current.shortName || "").trim() === defaultShortName) return;
+    setEditingProduct({
+      ...current,
+      shortName: defaultShortName,
+      shortNameManuallyEdited: false,
+    });
+  });
 
   const handleProductFycRateChange = (value: string) => {
     const rate = parseFloat(value);
@@ -310,74 +414,6 @@ const PlanEditor: Component = () => {
     }, 280);
   };
 
-  const handleProductRowPremiumChange = (rowIndex: number, value: string) => {
-    const premium = parseFloat(value) || 0;
-    setEditingProduct((current) => {
-      if (!current) return current;
-      const rows = [...current.premiumRows];
-      rows[rowIndex] = { ...rows[rowIndex], premium };
-      return { ...current, premiumRows: rows };
-    });
-  };
-
-  const handleProductRowFrequencyChange = (
-    rowIndex: number,
-    frequency: PremiumFrequency | "",
-  ) => {
-    setEditingProduct((current) => {
-      if (!current) return current;
-      const rows = [...current.premiumRows];
-      rows[rowIndex] = { ...rows[rowIndex], frequency };
-      return { ...current, premiumRows: rows };
-    });
-  };
-
-  const handleRemoveProductRow = (rowIndex: number) => {
-    const product = editingProduct();
-    if (!product) return;
-    const rowId = product.premiumRows[rowIndex]?.id;
-    if (!rowId) return;
-    setRemovingRowId(rowId);
-    setTimeout(() => {
-      setRemovingRowId(null);
-      setEditingProduct((current) => {
-        if (!current) return current;
-        return { ...current, premiumRows: current.premiumRows.filter((r) => r.id !== rowId) };
-      });
-    }, 280);
-  };
-
-  const handleRiderRowPremiumChange = (
-    riderIndex: number,
-    rowIndex: number,
-    value: string,
-  ) => {
-    const premium = parseFloat(value) || 0;
-    setEditingProduct((current) => {
-      if (!current) return current;
-      const riders = [...current.riders];
-      const rows = [...riders[riderIndex].premiumRows];
-      rows[rowIndex] = { ...rows[rowIndex], premium };
-      riders[riderIndex] = { ...riders[riderIndex], premiumRows: rows };
-      return { ...current, riders };
-    });
-  };
-
-  const handleRiderRowFrequencyChange = (
-    riderIndex: number,
-    rowIndex: number,
-    frequency: PremiumFrequency | "",
-  ) => {
-    setEditingProduct((current) => {
-      if (!current) return current;
-      const riders = [...current.riders];
-      const rows = [...riders[riderIndex].premiumRows];
-      rows[rowIndex] = { ...rows[rowIndex], frequency };
-      riders[riderIndex] = { ...riders[riderIndex], premiumRows: rows };
-      return { ...current, riders };
-    });
-  };
-
   const handleRiderFycRateChange = (riderIndex: number, value: string) => {
     const parsed = value.trim() === "" ? -1 : parseFloat(value);
     const rate = Number.isNaN(parsed) ? -1 : parsed;
@@ -389,70 +425,155 @@ const PlanEditor: Component = () => {
     });
   };
 
-  const handleRemoveRiderRow = (riderIndex: number, rowIndex: number) => {
-    const product = editingProduct();
-    if (!product) return;
-    const rider = product.riders[riderIndex];
-    if (!rider) return;
-    const rowId = rider.premiumRows[rowIndex]?.id;
-    if (!rowId) return;
-    setRemovingRowId(rowId);
-    setTimeout(() => {
-      setRemovingRowId(null);
-      setEditingProduct((current) => {
-        if (!current) return current;
-        const riders = [...current.riders];
-        const target = riders[riderIndex];
-        if (!target) return current;
-        riders[riderIndex] = {
-          ...target,
-          premiumRows: target.premiumRows.filter((r) => r.id !== rowId),
-        };
-        return { ...current, riders };
-      });
-    }, 280);
+  const getEditorTargetRows = (
+    current: DraftProduct,
+    editor: Pick<PremiumManagerState, "scope" | "riderIndex">,
+  ): DraftPremiumRow[] => {
+    if (editor.scope === "product") {
+      return current.premiumRows;
+    }
+    const riderIndex = editor.riderIndex ?? -1;
+    return riderIndex >= 0 ? current.riders[riderIndex]?.premiumRows || [] : [];
   };
 
-  const openProductRowEditor = (rowIndex?: number) => {
+  const updateEditorTargetRows = (
+    current: DraftProduct,
+    editor: PremiumManagerTarget,
+    updater: (rows: DraftPremiumRow[]) => DraftPremiumRow[],
+  ): DraftProduct => {
+    if (editor.scope === "product") {
+      return { ...current, premiumRows: updater(current.premiumRows) };
+    }
+
+    const riderIndex = editor.riderIndex ?? -1;
+    if (riderIndex < 0) return current;
+    const riders = [...current.riders];
+    const rider = riders[riderIndex];
+    if (!rider) return current;
+    riders[riderIndex] = {
+      ...rider,
+      premiumRows: updater(rider.premiumRows),
+    };
+    return { ...current, riders };
+  };
+
+  const getDefaultRowEditorFrequency = (
+    current: DraftProduct,
+    editor: PremiumManagerTarget,
+    existingFrequency?: PremiumFrequency | "",
+  ): PremiumFrequency | "" => {
+    const targetRows =
+      editor.scope === "product"
+        ? current
+        : current.riders[editor.riderIndex ?? -1];
+    if (!targetRows) return existingFrequency || "";
+
+    const allowed = getAllowedFrequencies(targetRows);
+    const basePlanFrequency = current.premiumRows[0]?.frequency || "";
+    return (
+      existingFrequency ||
+      (allowed.length === 1 ? allowed[0] : "") ||
+      (editor.scope === "rider" &&
+      basePlanFrequency &&
+      allowed.includes(basePlanFrequency)
+        ? basePlanFrequency
+        : "")
+    );
+  };
+
+  const createRowEditorDraft = (
+    current: DraftProduct,
+    editor: PremiumManagerTarget,
+    row?: DraftPremiumRow,
+  ): PremiumManagerRowDraft => ({
+    id: row?.id || generateRowId(),
+    quantity: String(Math.max(1, row?.quantity || 1)),
+    premium:
+      row && Number.isFinite(row.premium) && row.premium > 0
+        ? String(row.premium)
+        : "",
+    frequency:
+      row?.frequency ||
+      getDefaultRowEditorFrequency(current, editor, row?.frequency || ""),
+  });
+
+  const buildRowEditorState = (
+    current: DraftProduct,
+    editor: PremiumManagerTarget,
+  ): PremiumManagerState => {
+    const rows = ensurePremiumManagerRows(
+      getEditorTargetRows(current, editor).map((row) =>
+        createRowEditorDraft(current, editor, row),
+      ),
+      () => createRowEditorDraft(current, editor),
+    );
+    return {
+      ...editor,
+      rows,
+      initialRowsSignature: serializePremiumRowDrafts(rows),
+    };
+  };
+
+  const openProductRowEditor = () => {
     const current = editingProduct();
     if (!current) return;
-    const row =
-      rowIndex !== undefined ? current.premiumRows[rowIndex] : undefined;
-    const allowed = getAllowedFrequencies(current);
-    const defaultFrequency =
-      row?.frequency || (allowed.length === 1 ? allowed[0] : "");
-    setRowEditor({
-      scope: "product",
-      rowIndex: rowIndex ?? null,
-      quantity: row ? String(Math.max(1, row.quantity || 1)) : "1",
-      premium: row ? String(row.premium || "") : "",
-      frequency: defaultFrequency,
-    });
+    setRowEditor(buildRowEditorState(current, { scope: "product" }));
     setRowEditorError("");
   };
 
-  const openRiderRowEditor = (riderIndex: number, rowIndex?: number) => {
+  const openRiderRowEditor = (riderIndex: number) => {
     const current = editingProduct();
-    if (!current) return;
-    const rider = current.riders[riderIndex];
-    if (!rider) return;
-    const row =
-      rowIndex !== undefined ? rider.premiumRows[rowIndex] : undefined;
-    const allowed = getAllowedFrequencies(rider);
-    const basePlanFrequency = current.premiumRows[0]?.frequency || "";
-    const defaultFrequency =
-      row?.frequency ||
-      (allowed.length === 1 ? allowed[0] : "") ||
-      (basePlanFrequency && allowed.includes(basePlanFrequency)
-        ? basePlanFrequency
-        : "");
-    setRowEditor({
-      scope: "rider",
-      riderIndex,
-      rowIndex: rowIndex ?? null,
-      quantity: row ? String(Math.max(1, row.quantity || 1)) : "1",
-      premium: row ? String(row.premium || "") : "",
-      frequency: defaultFrequency,
+    if (!current || !current.riders[riderIndex]) return;
+    setRowEditor(
+      buildRowEditorState(current, {
+        scope: "rider",
+        riderIndex,
+      }),
+    );
+    setRowEditorError("");
+  };
+
+  const updateManagedRow = (
+    rowId: string,
+    updater: (row: PremiumManagerRowDraft) => PremiumManagerRowDraft,
+  ) => {
+    setRowEditor((prev) =>
+      prev
+        ? {
+            ...prev,
+            rows: prev.rows.map((row) =>
+              row.id === rowId ? updater(row) : row,
+            ),
+          }
+        : prev,
+    );
+    setRowEditorError("");
+  };
+
+  const addManagedRow = () => {
+    const editor = rowEditor();
+    const current = editingProduct();
+    if (!editor || !current) return;
+    const nextRow = createRowEditorDraft(current, editor);
+    setRowEditor((prev) =>
+      prev ? { ...prev, rows: [...prev.rows, nextRow] } : prev,
+    );
+    setRowEditorError("");
+    highlightRow(nextRow.id);
+  };
+
+  const removeManagedRow = (rowId: string) => {
+    const current = editingProduct();
+    setRowEditor((prev) => {
+      if (!prev) return prev;
+      if (prev.rows.length <= 1 || !current) return prev;
+      return {
+        ...prev,
+        rows: ensurePremiumManagerRows(
+          prev.rows.filter((row) => row.id !== rowId),
+          () => createRowEditorDraft(current, prev),
+        ),
+      };
     });
     setRowEditorError("");
   };
@@ -462,97 +583,56 @@ const PlanEditor: Component = () => {
     setRowEditorError("");
   };
 
-  const saveRowEditor = () => {
-    const editor = rowEditor();
-    if (!editor) return;
-    if (!editor.quantity.trim()) {
-      setRowEditorError("Quantity is required.");
-      return;
+  const getRowDraftError = (row: PremiumManagerRowDraft): string | null => {
+    if (!row.quantity.trim()) {
+      return "Quantity is required.";
     }
-    const parsedQuantity = Number(editor.quantity);
+    const parsedQuantity = Number(row.quantity);
     if (
       !Number.isFinite(parsedQuantity) ||
       !Number.isInteger(parsedQuantity) ||
       parsedQuantity <= 0
     ) {
-      setRowEditorError("Quantity must be a positive whole number.");
-      return;
+      return "Quantity must be a positive whole number.";
     }
-    if (!editor.premium.trim()) {
-      setRowEditorError("Premium is required.");
-      return;
+    if (!row.premium.trim()) {
+      return "Premium is required.";
     }
-    const parsedPremium = parseFloat(editor.premium);
+    const parsedPremium = parseFloat(row.premium);
     if (!Number.isFinite(parsedPremium) || parsedPremium <= 0) {
-      setRowEditorError("Premium must be a positive number.");
-      return;
+      return "Premium must be a positive number.";
     }
-    if (!editor.frequency) {
-      setRowEditorError("Frequency is required.");
-      return;
+    if (!row.frequency) {
+      return "Frequency is required.";
     }
+    return null;
+  };
 
-    const newId = editor.rowIndex === null ? generateRowId() : null;
+  const saveRowEditor = () => {
+    const editor = rowEditor();
+    if (!editor) return;
+    const parsedRows: DraftPremiumRow[] = [];
+
+    for (const row of editor.rows) {
+      const error = getRowDraftError(row);
+      if (error) {
+        setRowEditorError("Complete every quantity/premium entry before finishing.");
+        return;
+      }
+      parsedRows.push({
+        id: row.id,
+        quantity: Number(row.quantity),
+        premium: parseFloat(row.premium),
+        frequency: row.frequency,
+      });
+    }
 
     setEditingProduct((current) => {
       if (!current) return current;
-      if (editor.scope === "product") {
-        const rows = [...current.premiumRows];
-        if (editor.rowIndex === null) {
-          rows.push({
-            id: newId!,
-            premium: parsedPremium,
-            frequency: editor.frequency,
-            quantity: parsedQuantity,
-          });
-        } else {
-          rows[editor.rowIndex] = {
-            ...rows[editor.rowIndex],
-            quantity: parsedQuantity,
-            premium: parsedPremium,
-            frequency: editor.frequency,
-          };
-        }
-        return { ...current, premiumRows: rows };
-      }
-      const riderIndex = editor.riderIndex ?? -1;
-      if (riderIndex < 0) return current;
-      const riders = [...current.riders];
-      const rider = riders[riderIndex];
-      if (!rider) return current;
-      const rows = [...rider.premiumRows];
-      if (editor.rowIndex === null) {
-        rows.push({
-          id: newId!,
-          premium: parsedPremium,
-          frequency: editor.frequency,
-          quantity: parsedQuantity,
-        });
-      } else {
-        rows[editor.rowIndex] = {
-          ...rows[editor.rowIndex],
-          quantity: parsedQuantity,
-          premium: parsedPremium,
-          frequency: editor.frequency,
-        };
-      }
-      riders[riderIndex] = { ...rider, premiumRows: rows };
-      return { ...current, riders };
+      return updateEditorTargetRows(current, editor, () =>
+        normalizePremiumRows(parsedRows),
+      );
     });
-
-    // Highlight the saved row
-    if (newId) {
-      highlightRow(newId);
-    } else if (editor.rowIndex !== null) {
-      const current = editingProduct();
-      if (current) {
-        const rowId =
-          editor.scope === "product"
-            ? current.premiumRows[editor.rowIndex]?.id
-            : current.riders[editor.riderIndex ?? -1]?.premiumRows[editor.rowIndex]?.id;
-        if (rowId) highlightRow(rowId);
-      }
-    }
 
     closeRowEditor();
   };
@@ -561,6 +641,11 @@ const PlanEditor: Component = () => {
     (premiumFrequencyLabels[freq] || freq)
       .replace("1 month", "1 mth")
       .replace("2 months", "2 mth");
+
+  const formatPremiumRowSummary = (row: DraftPremiumRow) =>
+    `${Math.max(1, row.quantity || 1)} x ${
+      row.premium > 0 ? `$${formatCurrency(row.premium)}` : "Premium"
+    } / ${row.frequency ? formatFrequencySummary(row.frequency) : "Frequency"}`;
 
   const getBasePlanOptionsForProduct = (product: DraftProduct) => {
     if (product.options && product.options.length > 0) {
@@ -992,9 +1077,7 @@ const PlanEditor: Component = () => {
                             type="number"
                             value={product().fycRate}
                             onInput={(e) =>
-                              handleProductFycRateChange(
-                                e.currentTarget.value,
-                              )
+                              handleProductFycRateChange(e.currentTarget.value)
                             }
                             min="0"
                             step="0.01"
@@ -1048,9 +1131,7 @@ const PlanEditor: Component = () => {
                               type="checkbox"
                               checked={product().gst}
                               onChange={(e) =>
-                                handleProductGstChange(
-                                  e.currentTarget.checked,
-                                )
+                                handleProductGstChange(e.currentTarget.checked)
                               }
                             />
                             <span>Applicable</span>
@@ -1068,81 +1149,53 @@ const PlanEditor: Component = () => {
                     </div>
                   </Show>
 
-                  <div class="space-y-2 flex flex-col items-center">
-                    <Show
-                      when={product().premiumRows.length > 0}
-                      fallback={
-                        <Button
-                          type="button"
-                          onClick={() => openProductRowEditor()}
-                          variant="danger"
-                          class="rounded-lg bg-red-50/40"
-                        >
-                          Key in Quantity & Premium
-                        </Button>
-                      }
+                  <div class="mt-4">
+                    <label class="mb-1.5 block text-base font-semibold uppercase text-slate-600">
+                      Quantities & Premiums
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => openProductRowEditor()}
+                      class={`relative w-full cursor-pointer rounded-2xl border px-4 py-4 shadow-sm transition ${
+                        product().premiumRows.length > 0
+                          ? "border-slate-200 bg-white hover:border-primary/40 hover:shadow-md"
+                          : "border-red-200 bg-red-50/60 hover:border-red-300"
+                      }`}
                     >
-                      <For each={product().premiumRows}>
-                        {(row, rowIndex) => {
-                          const premiumLabel = () =>
-                            row.premium > 0
-                              ? `$${formatCurrency(row.premium)}`
-                              : "Premium";
-                          const frequencyLabel = () =>
-                            row.frequency
-                              ? formatFrequencySummary(row.frequency)
-                              : "Frequency";
-                          const rowLabel = () =>
-                            `${Math.max(1, row.quantity || 1)} x ${premiumLabel()} / ${frequencyLabel()}`;
-                          return (
-                            <div class={`w-full max-w-sm ${row.id === removingRowId() ? "animate-row-remove" : ""}`}>
-                              <div class={`flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm ${row.id === highlightedRowId() ? "animate-row-highlight" : ""}`}>
-                                <span
-                                  class={`text-base ${
-                                    row.premium > 0 && row.frequency
-                                      ? "text-slate-900"
-                                      : "text-slate-500"
+                      <Show when={product().premiumRows.length > 0}>
+                        <span class="absolute right-3 top-3 rounded-full bg-primary/10 p-2 text-primary">
+                          <TbOutlinePencil class="h-4 w-4" />
+                        </span>
+                      </Show>
+                      <div class="flex flex-col items-center justify-center gap-3 text-center">
+                        <Show
+                          when={product().premiumRows.length > 0}
+                          fallback={
+                            <div class="text-base text-red-600">
+                              Tap to key in quantity/premium
+                            </div>
+                          }
+                        >
+                          <div class="flex w-full flex-col items-center gap-2">
+                            <For each={product().premiumRows}>
+                              {(row) => (
+                                <div
+                                  class={`w-full max-w-md rounded-xl border px-3 py-2 text-center ${
+                                    row.id === highlightedRowId()
+                                      ? "animate-row-highlight border-primary/30 bg-primary/5"
+                                      : "border-slate-200 bg-slate-50"
                                   }`}
                                 >
-                                  {rowLabel()}
-                                </span>
-                                <div class="flex items-center gap-1.5">
-                                  <IconButton
-                                    type="button"
-                                    onClick={() =>
-                                      openProductRowEditor(rowIndex())
-                                    }
-                                    class="text-primary hover:bg-primary/10 hover:text-primary"
-                                    title="Edit row"
-                                    aria-label="Edit row"
-                                  >
-                                    <TbOutlinePencil />
-                                  </IconButton>
-                                  <IconButton
-                                    type="button"
-                                    onClick={() =>
-                                      handleRemoveProductRow(rowIndex())
-                                    }
-                                    class="text-red-500 hover:bg-red-50 hover:text-red-600"
-                                    title="Delete row"
-                                    aria-label="Delete row"
-                                  >
-                                    <TbOutlineTrash />
-                                  </IconButton>
+                                  <div class="text-base font-medium text-slate-900">
+                                    {formatPremiumRowSummary(row)}
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
-                          );
-                        }}
-                      </For>
-                      <button
-                        type="button"
-                        onClick={() => openProductRowEditor()}
-                        class="cursor-pointer text-base text-primary hover:text-primary/80"
-                      >
-                        + Add premium row
-                      </button>
-                    </Show>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      </div>
+                    </button>
                   </div>
 
                   <Show when={!planData.isAddon}>
@@ -1228,7 +1281,8 @@ const PlanEditor: Component = () => {
                                   <Show when={hasSelectableRiderOptions()}>
                                     <div class="mb-3">
                                       <label class="mb-1.5 block text-base font-semibold uppercase text-slate-600">
-                                        {rider.optionTitle || "Entry Age"} / FYC Rate
+                                        {rider.optionTitle || "Entry Age"} / FYC
+                                        Rate
                                       </label>
                                       <select
                                         value={
@@ -1288,94 +1342,58 @@ const PlanEditor: Component = () => {
                                     </div>
                                   </Show>
 
-                                  <div class="space-y-2 flex flex-col items-center">
-                                    <Show
-                                      when={rider.premiumRows.length > 0}
-                                      fallback={
-                                        <Button
-                                          type="button"
-                                          onClick={() =>
-                                            openRiderRowEditor(riderIndex())
-                                          }
-                                          variant="danger"
-                                          class="rounded-lg bg-red-50/40"
-                                        >
-                                          Key in Quantity & Premium
-                                        </Button>
+                                  <div class="mt-3">
+                                    <label class="mb-1.5 block text-base font-semibold uppercase text-slate-600">
+                                      Quantities & Premiums
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openRiderRowEditor(riderIndex())
                                       }
+                                      class={`relative w-full cursor-pointer rounded-2xl border px-4 py-4 shadow-sm transition ${
+                                        rider.premiumRows.length > 0
+                                          ? "border-slate-200 bg-white hover:border-primary/40 hover:shadow-md"
+                                          : "border-red-200 bg-red-50/60 hover:border-red-300"
+                                      }`}
                                     >
-                                      <For each={rider.premiumRows}>
-                                        {(row, rowIndex) => {
-                                          const premiumLabel = () =>
-                                            row.premium > 0
-                                              ? `$${formatCurrency(row.premium)}`
-                                              : "Premium";
-                                          const frequencyLabel = () =>
-                                            row.frequency
-                                              ? formatFrequencySummary(
-                                                  row.frequency,
-                                                )
-                                              : "Frequency";
-                                          const rowLabel = () =>
-                                            `${Math.max(1, row.quantity || 1)} x ${premiumLabel()} / ${frequencyLabel()}`;
-                                          return (
-                                            <div class={`w-full max-w-sm ${row.id === removingRowId() ? "animate-row-remove" : ""}`}>
-                                              <div class={`flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm ${row.id === highlightedRowId() ? "animate-row-highlight" : ""}`}>
-                                                <span
-                                                  class={`text-base ${
-                                                    row.premium > 0 &&
-                                                    row.frequency
-                                                      ? "text-slate-900"
-                                                      : "text-slate-500"
+                                      <Show when={rider.premiumRows.length > 0}>
+                                        <span class="absolute right-3 top-3 rounded-full bg-primary/10 p-2 text-primary">
+                                          <TbOutlinePencil class="h-4 w-4" />
+                                        </span>
+                                      </Show>
+                                      <div class="flex flex-col items-center justify-center gap-3 text-center">
+                                        <Show
+                                          when={rider.premiumRows.length > 0}
+                                          fallback={
+                                            <div class="text-base text-red-600">
+                                              Tap to key in quantity/premium
+                                            </div>
+                                          }
+                                        >
+                                          <div class="flex w-full flex-col items-center gap-2">
+                                            <For each={rider.premiumRows}>
+                                              {(row) => (
+                                                <div
+                                                  class={`w-full max-w-md rounded-xl border px-3 py-2 text-center ${
+                                                    row.id ===
+                                                    highlightedRowId()
+                                                      ? "animate-row-highlight border-primary/30 bg-primary/5"
+                                                      : "border-slate-200 bg-slate-50"
                                                   }`}
                                                 >
-                                                  {rowLabel()}
-                                                </span>
-                                                <div class="flex items-center gap-1.5">
-                                                  <IconButton
-                                                    type="button"
-                                                    onClick={() =>
-                                                      openRiderRowEditor(
-                                                        riderIndex(),
-                                                        rowIndex(),
-                                                      )
-                                                    }
-                                                    class="text-primary hover:bg-primary/10 hover:text-primary"
-                                                    title="Edit row"
-                                                    aria-label="Edit row"
-                                                  >
-                                                    <TbOutlinePencil />
-                                                  </IconButton>
-                                                  <IconButton
-                                                    type="button"
-                                                    onClick={() =>
-                                                      handleRemoveRiderRow(
-                                                        riderIndex(),
-                                                        rowIndex(),
-                                                      )
-                                                    }
-                                                    class="text-red-500 hover:bg-red-50 hover:text-red-600"
-                                                    title="Delete row"
-                                                    aria-label="Delete row"
-                                                  >
-                                                    <TbOutlineTrash />
-                                                  </IconButton>
+                                                  <div class="text-base font-medium text-slate-900">
+                                                    {formatPremiumRowSummary(
+                                                      row,
+                                                    )}
+                                                  </div>
                                                 </div>
-                                              </div>
-                                            </div>
-                                          );
-                                        }}
-                                      </For>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          openRiderRowEditor(riderIndex())
-                                        }
-                                        class="cursor-pointer text-base text-primary hover:text-primary/80"
-                                      >
-                                        + Add premium row
-                                      </button>
-                                    </Show>
+                                              )}
+                                            </For>
+                                          </div>
+                                        </Show>
+                                      </div>
+                                    </button>
                                   </div>
                                 </div>
                               );
@@ -1434,159 +1452,190 @@ const PlanEditor: Component = () => {
             !isProduct && typeof riderIndex === "number"
               ? currentProduct.riders[riderIndex]
               : undefined;
-          const optionsSource = isProduct
-            ? currentProduct
-            : targetRider;
-          const allowedFrequencies =
-            getAllowedFrequencies(optionsSource);
+          const optionsSource = isProduct ? currentProduct : targetRider;
+          if (!optionsSource) return null;
+          const modalRows = () => editor().rows;
+          const allowedFrequencies = getAllowedFrequencies(optionsSource);
           const isLocked = allowedFrequencies.length === 1;
-          const quantityInvalid = () => {
-            const parsed = Number(editor().quantity);
-            return (
-              !editor().quantity.trim() ||
-              !Number.isFinite(parsed) ||
-              !Number.isInteger(parsed) ||
-              parsed <= 0
-            );
-          };
-          const premiumInvalid = () =>
-            !editor().premium.trim() ||
-            !Number.isFinite(parseFloat(editor().premium)) ||
-            parseFloat(editor().premium) <= 0;
-          const frequencyInvalid = () => !editor().frequency;
-          const rowSaveDisabled = () =>
-            quantityInvalid() ||
-            premiumInvalid() ||
-            frequencyInvalid();
           return (
             <EditModal
-              title={
-                editor().rowIndex === null
-                  ? "Add Premium Row"
-                  : "Edit Premium Row"
-              }
+              title="Edit Quantities & Premiums"
               onClose={closeRowEditor}
               onSave={saveRowEditor}
+              saveVariant="primary"
               manageHistoryEntry
-              saveVariant="primaryOutline"
-              saveDisabled={rowSaveDisabled()}
-              bodyClass="pb-6 pt-4"
+              saveLabel="Done"
+              maxWidthClass="max-w-3xl"
+              hasUnsavedChanges={() =>
+                serializePremiumRowDrafts(editor().rows) !==
+                editor().initialRowsSignature
+              }
+              discardPrompt="You have unsaved quantity/premium changes that will be lost."
             >
-                <div class="space-y-4">
-                  <div>
-                    <label class="mb-1 block text-base font-semibold uppercase text-slate-600">
-                      Quantity
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min="1"
-                      step="1"
-                      autocomplete="off"
-                      value={editor().quantity}
-                      onInput={(e) =>
-                        setRowEditor((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                quantity: e.currentTarget.value,
-                              }
-                            : prev,
-                        )
-                      }
-                      class={`w-full rounded-md border bg-white px-3 py-2.5 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
-                        quantityInvalid()
-                          ? "border-red-300 bg-red-50/40 focus:ring-red-200"
-                          : "border-slate-300 focus:border-primary focus:ring-primary/20"
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label class="mb-1 block text-base font-semibold uppercase text-slate-600">
-                      Premium
-                    </label>
-                    <div class="relative">
-                      <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-base text-gray-500">
-                        $
-                      </span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        autocomplete="off"
-                        value={editor().premium}
-                        onInput={(e) =>
-                          setRowEditor((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  premium: e.currentTarget.value,
+              <div class="space-y-4">
+                <div class="space-y-3">
+                  <Index each={modalRows()}>
+                    {(row, index) => {
+                      const currentRow = row;
+                      const quantityInvalid = () => {
+                        const draftRow = currentRow();
+                        const parsed = Number(draftRow.quantity);
+                        return (
+                          !draftRow.quantity.trim() ||
+                          !Number.isFinite(parsed) ||
+                          !Number.isInteger(parsed) ||
+                          parsed <= 0
+                        );
+                      };
+                      const premiumInvalid = () => {
+                        const draftRow = currentRow();
+                        return (
+                          !draftRow.premium.trim() ||
+                          !Number.isFinite(parseFloat(draftRow.premium)) ||
+                          parseFloat(draftRow.premium) <= 0
+                        );
+                      };
+                      const frequencyInvalid = () => !currentRow().frequency;
+
+                      return (
+                        <div
+                          class={`rounded-2xl border bg-white p-4 shadow-sm ${
+                            row().id === highlightedRowId()
+                              ? "animate-row-highlight border-primary/30 bg-primary/5"
+                              : "border-slate-200"
+                          }`}
+                        >
+                          <div class="mb-3 flex items-center justify-between gap-3">
+                            <div class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                              Entry {index + 1}
+                            </div>
+                            <Show when={modalRows().length > 1}>
+                              <IconButton
+                                type="button"
+                                onClick={() => removeManagedRow(row().id)}
+                                class="text-red-500 hover:bg-red-50 hover:text-red-600"
+                                title="Delete entry"
+                                aria-label={`Delete entry ${index + 1}`}
+                              >
+                                <TbOutlineTrash />
+                              </IconButton>
+                            </Show>
+                          </div>
+
+                          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            <div>
+                              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Quantity
+                              </label>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min="1"
+                                step="1"
+                                autocomplete="off"
+                                value={currentRow().quantity}
+                                onInput={(e) =>
+                                  updateManagedRow(row().id, (draftRow) => ({
+                                    ...draftRow,
+                                    quantity: e.currentTarget.value,
+                                  }))
                                 }
-                              : prev,
-                          )
-                        }
-                        class={`w-full rounded-md border bg-white py-2.5 pl-8 pr-3 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
-                          premiumInvalid()
-                            ? "border-red-300 bg-red-50/40 focus:ring-red-200"
-                            : "border-slate-300 focus:border-primary focus:ring-primary/20"
-                        }`}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label class="mb-1 block text-base font-semibold uppercase text-slate-600">
-                      Select Frequency
-                    </label>
-                    <div
-                      class={`overflow-hidden rounded-lg border ${
-                        frequencyInvalid()
-                          ? "border-red-300 bg-red-50/40"
-                          : "border-gray-200 bg-white"
-                      }`}
-                    >
-                      <For each={allowedFrequencies}>
-                        {(freq) => {
-                          const selected = () =>
-                            editor().frequency === freq;
-                          return (
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              onClick={() =>
-                                setRowEditor((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        frequency: freq,
-                                      }
-                                    : prev,
-                                )
-                              }
-                              class={`flex w-full items-center justify-between gap-3 border-l-4 border-l-primary border-y border-r border-gray-200 px-4 py-3 text-left text-base transition-colors ${
-                                selected()
-                                  ? "bg-primary/5 font-semibold text-primary"
-                                  : "bg-white text-gray-700 hover:bg-gray-50"
-                              } ${
-                                isLocked
-                                  ? "cursor-default opacity-80"
-                                  : "cursor-pointer"
-                              }`}
-                            >
-                              <span>{getFrequencyOptionLabel(freq)}</span>
-                              <Show when={selected()}>
-                                <TbOutlineCheck class="h-4 w-4 text-primary" />
-                              </Show>
-                            </button>
-                          );
-                        }}
-                      </For>
-                    </div>
-                  </div>
-                  <Show when={rowEditorError()}>
-                    <div class="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-base text-red-600">
-                      {rowEditorError()}
-                    </div>
-                  </Show>
+                                class={`w-full rounded-md border bg-white px-3 py-2.5 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                                  quantityInvalid()
+                                    ? "border-red-300 bg-red-50/40 focus:ring-red-200"
+                                    : "border-slate-300 focus:border-primary focus:ring-primary/20"
+                                }`}
+                              />
+                            </div>
+
+                            <div>
+                              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Premium
+                              </label>
+                              <div class="relative">
+                                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-base text-gray-500">
+                                  $
+                                </span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  autocomplete="off"
+                                  value={currentRow().premium}
+                                  onInput={(e) =>
+                                    updateManagedRow(row().id, (draftRow) => ({
+                                      ...draftRow,
+                                      premium: e.currentTarget.value,
+                                    }))
+                                  }
+                                  class={`w-full rounded-md border bg-white py-2.5 pl-8 pr-3 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                                    premiumInvalid()
+                                      ? "border-red-300 bg-red-50/40 focus:ring-red-200"
+                                      : "border-slate-300 focus:border-primary focus:ring-primary/20"
+                                  }`}
+                                />
+                              </div>
+                            </div>
+
+                            <div class="col-span-2 sm:col-span-1">
+                              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Frequency
+                              </label>
+                              <select
+                                value={currentRow().frequency}
+                                disabled={isLocked}
+                                onChange={(e) =>
+                                  updateManagedRow(row().id, (draftRow) => ({
+                                    ...draftRow,
+                                    frequency: e.currentTarget
+                                      .value as PremiumFrequency,
+                                  }))
+                                }
+                                class={`w-full rounded-md border px-3 py-2.5 text-base text-slate-950 focus:outline-none focus:ring-2 ${
+                                  frequencyInvalid()
+                                    ? "border-red-300 bg-red-50/40 focus:ring-red-200"
+                                    : "border-slate-300 bg-white focus:border-primary focus:ring-primary/20"
+                                } ${
+                                  isLocked
+                                    ? "cursor-default opacity-80"
+                                    : "cursor-pointer"
+                                }`}
+                              >
+                                <option value="" disabled>
+                                  Select frequency...
+                                </option>
+                                <For each={allowedFrequencies}>
+                                  {(freq) => (
+                                    <option value={freq}>
+                                      {getFrequencyOptionLabel(freq)}
+                                    </option>
+                                  )}
+                                </For>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  </Index>
                 </div>
+
+                <Show when={rowEditorError()}>
+                  <div class="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-base text-red-600">
+                    {rowEditorError()}
+                  </div>
+                </Show>
+
+                <div class="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="primaryOutline"
+                    onClick={addManagedRow}
+                  >
+                    <TbOutlinePlus class="h-4 w-4" />
+                    Add another Quantity/Premium
+                  </Button>
+                </div>
+              </div>
             </EditModal>
           );
         }}
@@ -1599,9 +1648,7 @@ const PlanEditor: Component = () => {
         onSelect={handlePickerSelect}
         mode={pickerMode()}
         attachableRiderIds={
-          pickerMode() === "rider"
-            ? getAttachableRiderIds()
-            : undefined
+          pickerMode() === "rider" ? getAttachableRiderIds() : undefined
         }
       />
 

@@ -282,7 +282,7 @@ class ProductCatalogController extends Controller
     {
         $customTitle = trim((string) ($payload['snapshotTitle'] ?? ''));
         if ($customTitle !== '') {
-            return substr($customTitle, 0, 255);
+            return mb_substr($customTitle, 0, 255, 'UTF-8');
         }
 
         return $this->buildProductsSnapshotSummary($payload);
@@ -440,7 +440,7 @@ class ProductCatalogController extends Controller
         if ($text === '') {
             return null;
         }
-        return substr($text, 0, $maxLength);
+        return mb_substr($text, 0, $maxLength, 'UTF-8');
     }
 
     private function frequenciesFromMask(mixed $rawMask): array

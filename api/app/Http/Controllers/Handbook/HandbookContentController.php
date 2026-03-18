@@ -4,16 +4,21 @@ namespace App\Http\Controllers\Handbook;
 
 use App\Http\Controllers\Controller;
 use App\Models\HandbookCategory;
-use App\Models\HandbookFile;
+use App\Services\Handbook\HandbookHtmlSanitizer;
+use App\Services\Handbook\HandbookFileCleanupService;
 use App\Services\AdminUndoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class HandbookContentController extends Controller
 {
     private const DOC_NAME = 'handbook';
+
+    public function __construct(
+        private readonly HandbookHtmlSanitizer $htmlSanitizer,
+        private readonly HandbookFileCleanupService $fileCleanup
+    ) {}
 
     public function show(): JsonResponse
     {
@@ -28,7 +33,7 @@ class HandbookContentController extends Controller
             return [
                 'id' => (int) $category->id,
                 'category' => $category->category,
-                'content' => $category->content ?? '',
+                'content' => $this->htmlSanitizer->sanitize((string) ($category->content ?? '')),
                 'imageUrl' => $category->image_url ?? '',
                 'imagePath' => $category->image_path ?? '',
                 'updatedBy' => $category->updater?->nickname
@@ -102,7 +107,7 @@ class HandbookContentController extends Controller
             $row = [
                 'category' => substr($category, 0, 120),
                 'position' => $index,
-                'content' => (string) ($entry['content'] ?? ''),
+                'content' => $this->htmlSanitizer->sanitize((string) ($entry['content'] ?? '')),
                 'image_url' => $this->nullableString($entry['imageUrl'] ?? null),
                 'image_path' => $this->nullableString($entry['imagePath'] ?? null),
                 'is_deleted' => false,
@@ -163,7 +168,10 @@ class HandbookContentController extends Controller
             }
         });
 
-        $this->cleanupUnusedHandbookFiles();
+        defer(
+            fn () => $this->fileCleanup->cleanupUnusedFiles(),
+            'handbook:cleanup-unused-files'
+        );
 
         return response()->json([
             'success' => true,
@@ -175,91 +183,6 @@ class HandbookContentController extends Controller
     {
         $text = trim((string) $value);
         return $text === '' ? null : $text;
-    }
-
-    private function cleanupUnusedHandbookFiles(): void
-    {
-        [$referencedFileIds, $referencedPaths] = $this->collectReferencedHandbookFiles();
-        $disk = (string) config('handbook.disk', 'local');
-
-        HandbookFile::query()
-            ->orderBy('id')
-            ->get(['id', 'path'])
-            ->each(function (HandbookFile $file) use ($referencedFileIds, $referencedPaths, $disk): void {
-                $fileId = (int) $file->id;
-                $path = trim((string) $file->path);
-
-                if (
-                    ($fileId > 0 && isset($referencedFileIds[$fileId]))
-                    || ($path !== '' && isset($referencedPaths[$path]))
-                ) {
-                    return;
-                }
-
-                try {
-                    if ($path !== '') {
-                        Storage::disk($disk)->delete($path);
-                    }
-
-                    $file->delete();
-                } catch (\Throwable $exception) {
-                    report($exception);
-                }
-            });
-    }
-
-    private function collectReferencedHandbookFiles(): array
-    {
-        $referencedFileIds = [];
-        $referencedPaths = [];
-
-        $rows = DB::table('handbook_categories')
-            ->where('is_deleted', false)
-            ->get(['content', 'image_url', 'image_path']);
-
-        foreach ($rows as $row) {
-            foreach ($this->extractHandbookFileIds((string) ($row->content ?? '')) as $id) {
-                $referencedFileIds[$id] = true;
-            }
-
-            foreach ($this->extractHandbookFileIds((string) ($row->image_url ?? '')) as $id) {
-                $referencedFileIds[$id] = true;
-            }
-
-            $path = trim((string) ($row->image_path ?? ''));
-            if ($path !== '') {
-                $referencedPaths[$path] = true;
-            }
-        }
-
-        return [$referencedFileIds, $referencedPaths];
-    }
-
-    private function extractHandbookFileIds(string $content): array
-    {
-        if ($content === '') {
-            return [];
-        }
-
-        $matchCount = preg_match_all(
-            '/\/api\/handbook\/file\/(\d+)(?=[^0-9]|$)/',
-            $content,
-            $matches
-        );
-
-        if (!$matchCount || !is_array($matches[1] ?? null)) {
-            return [];
-        }
-
-        $ids = [];
-        foreach ($matches[1] as $value) {
-            $id = (int) $value;
-            if ($id > 0) {
-                $ids[$id] = true;
-            }
-        }
-
-        return array_keys($ids);
     }
 
     private function buildHandbookSnapshotSummary(array $entries): string

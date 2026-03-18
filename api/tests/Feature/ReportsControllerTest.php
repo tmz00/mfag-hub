@@ -15,10 +15,10 @@ class ReportsControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_show_returns_empty_reports_when_not_configured(): void
+    public function test_admin_can_view_empty_reports_when_not_configured(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
 
         $response = $this->getJson('/api/reports');
         $response->assertOk()->assertJson([
@@ -181,10 +181,10 @@ class ReportsControllerTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_authenticated_user_can_render_report_pdf(): void
+    public function test_admin_can_render_report_pdf(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
         Storage::fake('local');
 
         $response = $this->postJson('/api/reports/render-pdf', [
@@ -229,10 +229,10 @@ class ReportsControllerTest extends TestCase
         $this->assertStringStartsWith('%PDF-', (string) $response->getContent());
     }
 
-    public function test_authenticated_user_can_render_single_table_report_pdf(): void
+    public function test_admin_can_render_single_table_report_pdf(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
         Storage::fake('local');
 
         $response = $this->postJson('/api/reports/render-pdf', [
@@ -292,8 +292,8 @@ class ReportsControllerTest extends TestCase
 
     public function test_render_single_table_pdf_groups_adjacent_matching_column_labels(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
         Storage::fake('local');
 
         $response = $this->postJson('/api/reports/render-pdf', [
@@ -370,8 +370,8 @@ class ReportsControllerTest extends TestCase
 
     public function test_render_report_pdf_requires_required_payload_fields(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
 
         $response = $this->postJson('/api/reports/render-pdf', [
             'report' => ['title' => 'Incomplete'],
@@ -383,8 +383,8 @@ class ReportsControllerTest extends TestCase
 
     public function test_render_report_pdf_applies_page_aspect_ratio_guard(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
         Storage::fake('local');
 
         $rows = [];
@@ -475,10 +475,10 @@ class ReportsControllerTest extends TestCase
         $this->assertDatabaseMissing('report_backups', ['id' => $backupId]);
     }
 
-    public function test_show_logo_returns_default_logo_when_custom_logo_not_configured(): void
+    public function test_admin_can_view_default_logo_when_custom_logo_not_configured(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
         Storage::fake('local');
 
         $response = $this->get('/api/reports/logo');
@@ -490,10 +490,10 @@ class ReportsControllerTest extends TestCase
         );
     }
 
-    public function test_show_logo_falls_back_to_public_html_when_public_logo_is_missing(): void
+    public function test_admin_logo_falls_back_to_public_html_when_public_logo_is_missing(): void
     {
-        $viewer = $this->createUser('standard');
-        Sanctum::actingAs($viewer);
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
         Storage::fake('local');
 
         $sourceLogo = public_path('images/mfag_banner.png');
@@ -565,6 +565,29 @@ class ReportsControllerTest extends TestCase
         ])->assertForbidden();
 
         $this->deleteJson('/api/reports/logo')->assertForbidden();
+    }
+
+    public function test_non_admin_cannot_view_or_render_reports(): void
+    {
+        $viewer = $this->createUser('standard');
+        Sanctum::actingAs($viewer);
+
+        $this->getJson('/api/reports')->assertForbidden();
+        $this->get('/api/reports/logo')->assertForbidden();
+        $this->postJson('/api/reports/render-pdf', [
+            'report' => ['title' => 'Blocked'],
+            'tables' => [
+                [
+                    'id' => 1,
+                    'titleLines' => ['Blocked'],
+                    'valueLabel' => 'Cases',
+                    'rows' => [],
+                    'metric' => ['type' => 'countCases'],
+                ],
+            ],
+            'reportDate' => '2026-02-14T00:00:00.000Z',
+            'reportRangeLabel' => '01 Feb 2026 - 14 Feb 2026',
+        ])->assertForbidden();
     }
 
     private function createUser(string $accessLevel): User

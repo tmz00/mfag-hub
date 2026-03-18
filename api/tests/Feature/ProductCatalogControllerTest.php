@@ -356,6 +356,31 @@ class ProductCatalogControllerTest extends TestCase
         $this->assertSame('after reordering categories / products', $snapshot->summary);
     }
 
+    public function test_update_truncates_multibyte_snapshot_title_without_breaking_utf8(): void
+    {
+        $editor = $this->createUser('editor');
+        Sanctum::actingAs($editor);
+
+        $title = str_repeat('你', 255);
+
+        $this->putJson('/api/products', [
+            'snapshotTitle' => $title,
+            'types' => [],
+            'basePlans' => [],
+            'riders' => [],
+        ])->assertOk()->assertJson(['saved' => true]);
+
+        $snapshot = DB::table('admin_restore_snapshots')
+            ->where('feature', 'products')
+            ->orderByDesc('id')
+            ->first();
+
+        $this->assertNotNull($snapshot);
+        $expected = 'after ' . str_repeat('你', 249);
+        $this->assertSame($expected, $snapshot->summary);
+        $this->assertTrue(mb_check_encoding((string) $snapshot->summary, 'UTF-8'));
+    }
+
     private function createUser(string $accessLevel): User
     {
         static $counter = 1;

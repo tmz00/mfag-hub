@@ -19,6 +19,7 @@ import {
   isHandbookApiFileUrl,
   resolveHandbookFileUrl,
 } from "../../../services/handbookFilesService";
+import { sanitizeHandbookHtml } from "../../../utils/sanitizeHandbookHtml";
 
 type HandbookEntry = {
   category?: string;
@@ -29,7 +30,7 @@ type HandbookEntry = {
 
 const preserveTextLineBreaks = (html: string): string => {
   const container = document.createElement("div");
-  container.innerHTML = html;
+  container.innerHTML = sanitizeHandbookHtml(html);
 
   const blocks = container.querySelectorAll<HTMLElement>(
     "p, li, blockquote, td, th, summary",

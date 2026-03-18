@@ -4,38 +4,75 @@ This directory contains the PHP Laravel backend that powers MFAG Hub on MySQL, i
 
 This repository root is `apps/`. Commands in this README are written either from that root (for example `cd api`) or from inside `api/` where shown.
 
+## Route prefixes and public mounting
+
+The Laravel app now serves app-relative routes with no internal `/api` prefix.
+
+Examples from the app itself:
+
+- `/auth/request-otp`
+- `/auth/verify-otp`
+- `/notifications/push/public-key`
+- `/backups/snapshots`
+- `/up`
+
+The production frontend mounts this Laravel app under `/api` on the main site, typically via:
+
+```bash
+ln -s ~/laravel-api/public ~/public_html/api
+```
+
+So browser-facing URLs become:
+
+- `https://hub.mfag.sg/api/auth/request-otp`
+- `https://hub.mfag.sg/api/notifications/push/public-key`
+- `https://hub.mfag.sg/api/backups/snapshots`
+- `https://hub.mfag.sg/api/up`
+
+Route examples in the rest of this README are app-relative unless the public `/api` mount is explicitly called out.
+
 ## Staging / production runbook
 
 Use this as the operational checklist for deployed environments.
 
-1. Install the required system binaries: `bash`, `mysqldump`, `mysql`, `gzip`, `gunzip`, and `tar`.
-2. Use rotating file logs in deployed environments:
+1. Deploy the full Laravel app outside web root, for example `~/laravel-api`, and expose only the `public/` directory through the web server. On SiteGround-style shared hosting, the current recommended layout is:
+
+```txt
+~/laravel-api/
+~/public_html/
+~/public_html/api -> ~/laravel-api/public
+```
+
+2. Install the required system binaries: `bash`, `mysqldump`, `mysql`, `gzip`, `gunzip`, and `tar`.
+3. Use rotating file logs in deployed environments:
 
 ```env
 LOG_CHANNEL=stack
 LOG_STACK=daily
 LOG_DAILY_DAYS=14
 LOG_LEVEL=info
+APP_URL=https://hub.mfag.sg/api
+CORS_ALLOWED_ORIGINS=https://hub.mfag.sg
 ```
 
 This keeps local disk usage bounded by pruning older `storage/logs/laravel-*.log` files automatically. The app defaults to non-rotating `single` logs in `local` and `testing`, and switches the `stack` channel to `daily` outside those environments unless you override `LOG_STACK`.
 
-3. Run Laravel's scheduler every minute from the host OS:
+4. Run Laravel's scheduler every minute from the host OS:
 
 ```bash
-* * * * * cd /path/to/repo/api && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /path/to/laravel-api && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-4. The app already defines these scheduled jobs:
+5. The app already defines these scheduled jobs:
     - `auth:cleanup-expired` every 10 minutes
     - `ops:backup-database` daily at `BACKUP_SCHEDULE_TIME` (default `02:15`, app timezone default `UTC`)
-5. Manual operations you may still run on demand:
+6. Manual operations you may still run on demand:
     - `php artisan auth:cleanup-expired`
     - `php artisan ops:backup-database`
     - `./scripts/import-database.sh /path/to/dump.sql.gz --yes`
     - `./scripts/export-uploaded-files.sh --output /path/to/uploaded-files.tar.gz`
     - `./scripts/import-uploaded-files.sh /path/to/uploaded-files.tar.gz --yes`
-6. Storage note:
+7. Storage note:
     - Daily snapshots keep the newest 14 database dumps by default.
     - Scheduled snapshots only keep database dumps.
 
@@ -97,14 +134,18 @@ This starts MySQL and Mailpit. If you also want the bundled database UIs, run `d
 composer install
 php artisan key:generate
 php artisan legacy:import:all
-php artisan serve --host=127.0.0.1 --port=8000
+./scripts/serve-dev.sh
 ```
+
+`./scripts/serve-dev.sh` starts Laravel with larger `memory_limit`, `post_max_size`, and `upload_max_filesize` values so large backup archives can be imported in local development. Override them with `MFAG_PHP_MEMORY_LIMIT`, `MFAG_POST_MAX_SIZE`, or `MFAG_UPLOAD_MAX_FILESIZE` if needed.
 
 5. Verify email flow
 
-- Request OTP via `POST /api/auth/request-otp`
+- Direct Laravel app: request OTP via `POST /auth/request-otp`
+- Frontend dev server: request OTP via `POST /api/auth/request-otp`
 - Open Mailpit at `http://127.0.0.1:8025` and copy OTP
-- Verify via `POST /api/auth/verify-otp`
+- Direct Laravel app: verify via `POST /auth/verify-otp`
+- Frontend dev server: verify via `POST /api/auth/verify-otp`
 
 ## Backup and restore
 
@@ -145,6 +186,8 @@ Import uploaded files:
 ```bash
 ./scripts/import-uploaded-files.sh /path/to/uploaded-files.tar.gz --yes
 ```
+
+If you are testing uploaded-file imports through the web UI in local development, start the API with `./scripts/serve-dev.sh` (or `npm run dev:api` from `apps/`). The default CLI PHP limits are typically too small for full backup archives and can fail with a 500 before the controller runs.
 
 Database snapshots created by the scheduler are stored under `storage/backups/snapshot-<timestamp>`.
 
@@ -204,12 +247,20 @@ Both commands are already scheduled; the host only needs to run `php artisan sch
 
 The backend now exposes these backup endpoints for the frontend backup screen:
 
-- `GET /api/backups/snapshots`
-- `POST /api/backups/snapshots/{snapshotId}/restore`
-- `POST /api/backups/database/export`
-- `POST /api/backups/database/import`
-- `POST /api/backups/files/export`
-- `POST /api/backups/files/import`
+- app-relative routes:
+    - `GET /backups/snapshots`
+    - `POST /backups/snapshots/{snapshotId}/restore`
+    - `POST /backups/database/export`
+    - `POST /backups/database/import`
+    - `POST /backups/files/export`
+    - `POST /backups/files/import`
+- deployed same-origin frontend mount:
+    - `GET /api/backups/snapshots`
+    - `POST /api/backups/snapshots/{snapshotId}/restore`
+    - `POST /api/backups/database/export`
+    - `POST /api/backups/database/import`
+    - `POST /api/backups/files/export`
+    - `POST /api/backups/files/import`
 
 Role access:
 
@@ -220,15 +271,15 @@ Role access:
 
 ## API routes implemented
 
-- Auth: `request-otp`, `verify-otp`, `refresh`, `me`, `logout`
-- Handbook: content read/write plus file list/download/upload/delete
-- Team: team listing, user create/update/delete, bulk agency updates, agency upsert/delete
-- Closings: list/detail/create/update/delete plus month data/backups for admins
-- Products: read/update
-- Sources: read/update
-- Reports: read/update plus admin backup list/delete
-- Backups: section snapshot list/restore plus uploaded file export/import for `admin`/`editor`, and database export/import for `admin`
-- Notifications: user/admin listing, detail, create/update/send/delete, attachments, read state, and push subscriptions
+- Auth: `/auth/request-otp`, `/auth/verify-otp`, `/auth/refresh`, `/auth/me`, `/auth/logout`
+- Handbook: `/handbook/*` content read/write plus file list/download/upload/delete
+- Team: `/team`, `/team/users/*`, `/agencies/*`
+- Closings: `/closings/*` plus month data/backups for admins
+- Products: `/products`
+- Sources: `/sources`
+- Reports: `/reports/*`
+- Backups: `/backups/*`
+- Notifications: `/notifications/*` including read state and push subscriptions
 
 ## Laravel wiring in this repo
 
@@ -249,12 +300,14 @@ The app already registers the custom `role` middleware alias in `bootstrap/app.p
 ## Frontend integration notes
 
 - The frontend already uses backend API endpoints for auth, team, products, sources, closings, reports, notifications, and handbook content/files.
+- In production, the frontend now targets the main site origin and reaches Laravel through the `/api` mount, so a browser request like `/api/auth/request-otp` lands on the app-relative Laravel route `/auth/request-otp`.
 - The backup UI is now backend-driven:
     - `admin` and `editor` can restore from the latest 50 section snapshots for products, sources, team, and handbook
     - `admin` can export/import the database, while `admin` and `editor` can export/import uploaded files
 - Auth uses:
-    - `POST /api/auth/request-otp` body `{ email, fscCode }`
-    - `POST /api/auth/verify-otp` body `{ email, otp }`
+    - deployed frontend: `POST /api/auth/request-otp` body `{ email, fscCode }`
+    - deployed frontend: `POST /api/auth/verify-otp` body `{ email, otp }`
+    - direct Laravel app: `POST /auth/request-otp` and `POST /auth/verify-otp`
     - `Authorization: Bearer <token>` for authenticated requests
 
 ## Next recommended implementation

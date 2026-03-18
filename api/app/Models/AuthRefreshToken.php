@@ -10,6 +10,7 @@ class AuthRefreshToken extends Model
     protected $fillable = [
         'user_id',
         'token_hash',
+        'session_key',
         'expires_at',
         'last_used_at',
         'revoked_at',
@@ -29,4 +30,3 @@ class AuthRefreshToken extends Model
         return $this->belongsTo(User::class);
     }
 }
-

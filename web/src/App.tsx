@@ -29,6 +29,7 @@ import Team from "./pages/dashboard/team/Team";
 import Closings from "./pages/dashboard/closings/Closings";
 import Products from "./pages/dashboard/products/Products";
 import Persistency from "./pages/dashboard/tools/Persistency";
+import AdminAccessGate from "./pages/admin/AdminAccessGate";
 
 const Login = lazy(() => import("./pages/auth/Login"));
 const OtpSignIn = lazy(() => import("./pages/auth/OtpSignIn"));
@@ -695,9 +696,11 @@ const App: Component = () => {
             path="/admin/team"
             component={() => (
               <Protected>
-                <Suspense fallback={<RouteLoadingFallback />}>
-                  <ManageTeam />
-                </Suspense>
+                <AdminAccessGate deniedMessage="Only admins can manage team members.">
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <ManageTeam />
+                  </Suspense>
+                </AdminAccessGate>
               </Protected>
             )}
           />
@@ -713,9 +716,11 @@ const App: Component = () => {
             path="/admin/reports"
             component={() => (
               <Protected>
-                <Suspense fallback={<RouteLoadingFallback />}>
-                  <Reports />
-                </Suspense>
+                <AdminAccessGate deniedMessage="Only admins can generate reports.">
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <Reports />
+                  </Suspense>
+                </AdminAccessGate>
               </Protected>
             )}
           />
@@ -723,9 +728,11 @@ const App: Component = () => {
             path="/admin/report-templates"
             component={() => (
               <Protected>
-                <Suspense fallback={<RouteLoadingFallback />}>
-                  <ManageReports />
-                </Suspense>
+                <AdminAccessGate deniedMessage="Only admins can manage report templates.">
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <ManageReports />
+                  </Suspense>
+                </AdminAccessGate>
               </Protected>
             )}
           />
@@ -753,9 +760,14 @@ const App: Component = () => {
             path="/admin/sources"
             component={() => (
               <Protected>
-                <Suspense fallback={<RouteLoadingFallback />}>
-                  <ManageSources />
-                </Suspense>
+                <AdminAccessGate
+                  allowEditor
+                  deniedMessage="Only admins and editors can manage closing sources."
+                >
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <ManageSources />
+                  </Suspense>
+                </AdminAccessGate>
               </Protected>
             )}
           />

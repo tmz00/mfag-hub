@@ -188,7 +188,7 @@ class TeamUserController extends Controller
     private function normalizeAccessLevel(string $incoming, string $fallback = 'standard'): string
     {
         $value = strtolower(trim($incoming));
-        if ($value === '' || $value === 'standard') {
+        if ($value === '') {
             $value = strtolower(trim($fallback)) ?: 'standard';
         }
 

@@ -1,5 +1,6 @@
 import type { PremiumFrequency } from "../../../../services/closingsService";
 import { premiumFrequencyLabels } from "../../../../services/closingsService";
+import { consolidatePremiumRowsByAmountAndFrequency } from "../../../../utils/closingPremiumRows";
 import type { DraftProduct, DraftPremiumRow } from "./SubmitClosing";
 
 export const frequencyOptions: Array<PremiumFrequency> = [
@@ -169,19 +170,9 @@ export type ConsolidatedRow = {
 export const consolidatePremiumRows = (
   rows: DraftPremiumRow[],
 ): ConsolidatedRow[] => {
-  const map = new Map<string, ConsolidatedRow>();
-  for (const row of rows) {
-    const key = `${row.premium}-${row.frequency}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.quantity += row.quantity || 1;
-    } else {
-      map.set(key, {
-        premium: row.premium,
-        frequency: row.frequency,
-        quantity: row.quantity || 1,
-      });
-    }
-  }
-  return Array.from(map.values());
+  return consolidatePremiumRowsByAmountAndFrequency(rows).map((row) => ({
+    premium: row.premium,
+    frequency: row.frequency as PremiumFrequency | "",
+    quantity: row.quantity,
+  }));
 };

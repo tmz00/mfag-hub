@@ -47,6 +47,9 @@ const notificationTypes = [
   { value: "alert", label: "Alert", icon: TbOutlineAlertCircle, colorClass: "text-red-500" },
 ] as const;
 
+const notificationAttachmentAccept =
+  ".csv,.doc,.docx,.gif,.jpeg,.jpg,.pdf,.png,.ppt,.pptx,.txt,.webp,.xls,.xlsx,application/msword,application/pdf,application/vnd.ms-excel,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/avif,image/gif,image/jpeg,image/png,image/webp,text/csv,text/plain";
+
 const formatDate = (date: Date) => {
   return date.toLocaleDateString("en-GB", {
     day: "numeric",
@@ -679,6 +682,7 @@ const ManageNotifications: Component = () => {
                       type="file"
                       multiple
                       class="hidden"
+                      accept={notificationAttachmentAccept}
                       onChange={handleAttachmentInput}
                       disabled={saving()}
                     />

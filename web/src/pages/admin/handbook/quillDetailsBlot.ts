@@ -1,5 +1,7 @@
 import Quill from "quill";
 
+import { sanitizeHandbookHtml } from "../../../utils/sanitizeHandbookHtml";
+
 const BlockEmbed = Quill.import("blots/block/embed") as any;
 
 export type DetailsValue = {
@@ -34,8 +36,8 @@ class DetailsBlot extends BlockEmbed {
   }
 
   static renderPreview(node: HTMLDivElement, value: DetailsValue) {
-    const summary = value.summary || "Question here";
-    const content = value.content || "<p>Answer here</p>";
+    const summary = sanitizeHandbookHtml(value.summary || "Question here");
+    const content = sanitizeHandbookHtml(value.content || "<p>Answer here</p>");
     node.innerHTML =
       `<div class="ql-details-summary" contenteditable="true" tabindex="0">${summary}</div>` +
       `<div class="ql-details-content" contenteditable="true" tabindex="0">${content}</div>`;

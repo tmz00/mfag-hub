@@ -49,9 +49,6 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/closings', [ClosingsController::class, 'store']);
     Route::put('/closings/{id}', [ClosingsController::class, 'update'])->whereNumber('id');
     Route::delete('/closings/{id}', [ClosingsController::class, 'destroy'])->whereNumber('id');
-    Route::get('/reports', [ReportsController::class, 'show']);
-    Route::get('/reports/logo', [ReportsController::class, 'showLogo']);
-    Route::post('/reports/render-pdf', [ReportsController::class, 'renderPdf']);
     Route::get('/products', [ProductCatalogController::class, 'show']);
     Route::get('/sources', [SourcesController::class, 'index']);
     Route::get('/notifications', [NotificationController::class, 'index']);
@@ -73,9 +70,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/closings/months/{monthKey}/backups', [ClosingsController::class, 'monthBackups'])
             ->where('monthKey', '[0-9]{6}');
         Route::delete('/closings/backups/{id}', [ClosingsController::class, 'deleteBackup'])->whereNumber('id');
+        Route::get('/reports', [ReportsController::class, 'show']);
         Route::put('/reports', [ReportsController::class, 'update']);
+        Route::get('/reports/logo', [ReportsController::class, 'showLogo']);
         Route::post('/reports/logo', [ReportsController::class, 'uploadLogo']);
         Route::delete('/reports/logo', [ReportsController::class, 'deleteLogo']);
+        Route::post('/reports/render-pdf', [ReportsController::class, 'renderPdf']);
         Route::get('/reports/backups', [ReportsController::class, 'backups']);
         Route::delete('/reports/backups/{id}', [ReportsController::class, 'deleteBackup'])->whereNumber('id');
         Route::post('/team/users', [TeamUserController::class, 'store']);

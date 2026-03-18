@@ -12,7 +12,6 @@ use Illuminate\Validation\ValidationException;
 class ClosingsController extends Controller
 {
     private const BACKUP_TTL_DAYS = 90;
-    private const CLOSING_FILTER_TIMEZONE = 'Asia/Singapore';
 
     public function index(Request $request): JsonResponse
     {
@@ -84,9 +83,8 @@ class ClosingsController extends Controller
         $payload = $this->validateClosingPayload($request);
         $actorId = $request->user()?->id;
         $now = now();
-        $monthKey = $this->parseTimestamp($payload['timestamp'] ?? null)->format('Ym');
 
-        $closingId = DB::transaction(function () use ($payload, $actorId, $now, $monthKey): int {
+        $closingId = DB::transaction(function () use ($payload, $actorId, $now): int {
             return $this->insertClosingFromPayload($payload, $actorId, $now);
         });
 
@@ -109,10 +107,8 @@ class ClosingsController extends Controller
         }
 
         $now = now();
-        $oldMonthKey = Carbon::parse((string) $existing->submitted_at)->format('Ym');
-        $newMonthKey = $this->parseTimestamp($payload['timestamp'] ?? null)->format('Ym');
 
-        DB::transaction(function () use ($id, $payload, $actorId, $now, $existing, $oldMonthKey, $newMonthKey): void {
+        DB::transaction(function () use ($id, $payload, $actorId, $now, $existing): void {
             $createdBy = $existing->created_by !== null ? (int) $existing->created_by : null;
             $createdAt = $existing->created_at !== null
                 ? $this->parseTimestamp($existing->created_at)
@@ -150,9 +146,7 @@ class ClosingsController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $monthKey = Carbon::parse((string) $existing->submitted_at)->format('Ym');
-
-        DB::transaction(function () use ($id, $monthKey, $actorId): void {
+        DB::transaction(function () use ($id): void {
             DB::table('closings')->where('id', $id)->delete();
         });
 
@@ -397,6 +391,8 @@ class ClosingsController extends Controller
     ): int {
         $inserted = 0;
 
+        $items = $this->consolidateClosingItems($items, $isRider, $catalogRiderFlags);
+
         foreach (array_values($items) as $position => $item) {
             if (!is_array($item)) {
                 continue;
@@ -431,13 +427,11 @@ class ClosingsController extends Controller
 
             $inserted++;
 
-            $premiums = is_array($item['quantitiesAndPremiums'] ?? null) ? $item['quantitiesAndPremiums'] : [];
+            $premiums = $this->consolidatePremiumRows(
+                is_array($item['quantitiesAndPremiums'] ?? null) ? $item['quantitiesAndPremiums'] : []
+            );
             foreach (array_values($premiums) as $premiumPosition => $premium) {
-                if (!is_array($premium)) {
-                    continue;
-                }
-
-                $premiumValue = $this->toDecimal($premium['premium'] ?? 0);
+                $premiumValue = (float) ($premium['premium'] ?? 0);
                 if ($premiumValue <= 0) {
                     continue;
                 }
@@ -446,7 +440,7 @@ class ClosingsController extends Controller
                     'closing_item_id' => $itemId,
                     'quantity' => max(1, (int) ($premium['quantity'] ?? 1)),
                     'premium' => $premiumValue,
-                    'frequency' => $this->nullableString($premium['frequency'] ?? null, 30),
+                    'frequency' => $premium['frequency'] ?? null,
                     'position' => $premiumPosition,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -458,6 +452,121 @@ class ClosingsController extends Controller
         }
 
         return $inserted;
+    }
+
+    private function consolidateClosingItems(
+        array $items,
+        bool $isRider = false,
+        array $catalogRiderFlags = []
+    ): array {
+        $consolidated = [];
+        $indexesByKey = [];
+
+        foreach (array_values($items) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $productId = trim((string) ($item['productId'] ?? ''));
+            $fullName = trim((string) ($item['fullName'] ?? ''));
+            if ($productId === '' || $fullName === '') {
+                continue;
+            }
+
+            $requestedIsRider = $this->nullableBool($item['isRider'] ?? null) ?? false;
+            $catalogIsRider = $catalogRiderFlags[$productId] ?? false;
+            $legacyStandaloneRider = !$isRider && $this->isLegacyStandaloneAddonName($item['shortName'] ?? null);
+            $effectiveIsRider = $isRider || $requestedIsRider || $catalogIsRider || $legacyStandaloneRider;
+
+            $normalizedShortName = $this->nullableString($item['shortName'] ?? null, 120);
+            $normalizedPremiumTerm = $this->nullableString($item['premiumTermOrIssueAge'] ?? null, 120);
+            $normalizedType = $this->nullableString($item['type'] ?? null, 50);
+            $normalizedFycRate = $this->toDecimal($item['fycRate'] ?? 0);
+            $normalizedGst = $this->toDecimal($item['gst'] ?? 0);
+            $normalizedPremiums = $this->consolidatePremiumRows(
+                is_array($item['quantitiesAndPremiums'] ?? null) ? $item['quantitiesAndPremiums'] : []
+            );
+            $normalizedRiders = $this->consolidateClosingItems(
+                is_array($item['riders'] ?? null) ? $item['riders'] : [],
+                true,
+                $catalogRiderFlags
+            );
+
+            $key = implode('::', [
+                $effectiveIsRider ? '1' : '0',
+                substr($productId, 0, 100),
+                substr($fullName, 0, 200),
+                $normalizedShortName ?? '',
+                $normalizedPremiumTerm ?? '',
+                $normalizedType ?? '',
+                number_format($normalizedFycRate, 4, '.', ''),
+                number_format($normalizedGst, 2, '.', ''),
+            ]);
+
+            if (isset($indexesByKey[$key])) {
+                $index = $indexesByKey[$key];
+                $consolidated[$index]['quantitiesAndPremiums'] = $this->consolidatePremiumRows(
+                    array_merge(
+                        $consolidated[$index]['quantitiesAndPremiums'],
+                        $normalizedPremiums
+                    )
+                );
+                $consolidated[$index]['riders'] = $this->consolidateClosingItems(
+                    array_merge($consolidated[$index]['riders'], $normalizedRiders),
+                    true,
+                    $catalogRiderFlags
+                );
+                continue;
+            }
+
+            $indexesByKey[$key] = count($consolidated);
+            $consolidated[] = [
+                'isRider' => $effectiveIsRider,
+                'productId' => substr($productId, 0, 100),
+                'fullName' => substr($fullName, 0, 200),
+                'shortName' => $normalizedShortName ?? '',
+                'premiumTermOrIssueAge' => $normalizedPremiumTerm,
+                'type' => $normalizedType,
+                'fycRate' => (float) $normalizedFycRate,
+                'gst' => (float) $normalizedGst,
+                'quantitiesAndPremiums' => $normalizedPremiums,
+                'riders' => $normalizedRiders,
+            ];
+        }
+
+        return $consolidated;
+    }
+
+    private function consolidatePremiumRows(array $premiums): array
+    {
+        $consolidated = [];
+        $indexesByKey = [];
+
+        foreach (array_values($premiums) as $premium) {
+            if (!is_array($premium)) {
+                continue;
+            }
+
+            $premiumValue = $this->toDecimal($premium['premium'] ?? 0);
+            $quantity = max(1, (int) ($premium['quantity'] ?? 1));
+            $frequency = $this->nullableString($premium['frequency'] ?? null, 30);
+            $key = number_format($premiumValue, 2, '.', '') . '::' . ($frequency ?? '');
+
+            if (isset($indexesByKey[$key])) {
+                $index = $indexesByKey[$key];
+                $consolidated[$index]['quantity'] += $quantity;
+                continue;
+            }
+
+            $indexesByKey[$key] = count($consolidated);
+            $consolidated[] = [
+                'quantity' => $quantity,
+                'premium' => $premiumValue,
+                'frequency' => $frequency,
+            ];
+        }
+
+        return $consolidated;
     }
 
     private function baseClosingsQuery()
@@ -607,6 +716,9 @@ class ClosingsController extends Controller
                 'frequency' => $this->firstNonEmpty([(string) ($premium->frequency ?? '')]),
             ];
         }
+        foreach ($premiumsByItemId as $itemId => $premiums) {
+            $premiumsByItemId[$itemId] = $this->consolidatePremiumRows($premiums);
+        }
 
         $itemsById = [];
         $rootsByClosing = [];
@@ -677,11 +789,12 @@ class ClosingsController extends Controller
 
         $result = [];
         foreach ($rootsByClosing as $closingId => $rootIds) {
-            $result[$closingId] = array_map(
+            $rootIds = array_map(
                 static fn ($id) => (int) $id,
                 is_array($rootIds) ? $rootIds : [],
             );
-            $result[$closingId] = array_map($resolveNode, $result[$closingId]);
+            $resolvedNodes = array_map($resolveNode, $rootIds);
+            $result[$closingId] = $this->consolidateClosingItems($resolvedNodes);
         }
 
         return $result;
@@ -886,7 +999,7 @@ class ClosingsController extends Controller
     private function closingFilterTimezone(): string
     {
         $configured = trim((string) config('app.closing_filter_timezone', ''));
-        return $configured !== '' ? $configured : self::CLOSING_FILTER_TIMEZONE;
+        return $configured !== '' ? $configured : 'Asia/Singapore';
     }
 
     private function catalogRiderFlagsForPayloadItems(array $items): array

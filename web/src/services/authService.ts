@@ -99,7 +99,7 @@ export function validateOtp(otp: string): string {
 }
 
 /**
- * Validate FSC code format (minimum 5 characters)
+ * Validate FSC code format (exactly 5 digits)
  */
 export function validateFscCode(fscCode: string): string {
   const trimmed = fscCode.trim();
@@ -108,8 +108,8 @@ export function validateFscCode(fscCode: string): string {
     return "FSC code is required";
   }
 
-  if (trimmed.length < 5) {
-    return "FSC code must be at least 5 characters";
+  if (!trimmed.match(/^[0-9]{5}$/)) {
+    return "FSC code must be exactly 5 digits";
   }
 
   return "";
@@ -265,10 +265,17 @@ class ApiAuthService implements AuthService {
     }
 
     let payload: any = null;
+    let fallbackText: string | null = null;
     try {
-      payload = await response.json();
+      payload = await response.clone().json();
     } catch {
       payload = null;
+      try {
+        const raw = await response.text();
+        fallbackText = raw.trim() || null;
+      } catch {
+        fallbackText = null;
+      }
     }
 
     if (!response.ok) {
@@ -287,10 +294,15 @@ class ApiAuthService implements AuthService {
       const message =
         firstValidationMessage(payload?.errors) ||
         payload?.message ||
+        fallbackText ||
         (response.status === 429
           ? "Too many attempts. Please wait and try again"
           : "Something went wrong. Please try again");
       throw new Error(message);
+    }
+
+    if (response.status !== 204 && payload === null) {
+      throw new Error("Server returned an unexpected response.");
     }
 
     return payload as T;

@@ -128,6 +128,36 @@ class TeamUserControllerTest extends TestCase
         $this->assertSame('Target', $target->nickname);
     }
 
+    public function test_admin_can_demote_elevated_users_to_standard(): void
+    {
+        $admin = $this->createUser('admin', [
+            'email' => 'admin-demote@example.test',
+            'fsc_code' => '60001',
+            'nickname' => 'AdminDemote',
+        ]);
+        Sanctum::actingAs($admin);
+
+        foreach (['editor', 'admin'] as $startingAccess) {
+            $target = $this->createUser($startingAccess, [
+                'email' => "{$startingAccess}-target@example.test",
+                'fsc_code' => $startingAccess === 'editor' ? '60002' : '60003',
+                'nickname' => ucfirst($startingAccess) . 'Target',
+            ]);
+
+            $this->putJson("/api/team/users/{$target->id}", [
+                'email' => $target->email,
+                'fscCode' => $target->fsc_code,
+                'agencyCode' => $target->agency?->code ?? 'AG00',
+                'accessLevel' => 'standard',
+                'nickname' => $target->nickname,
+                'fullName' => $target->full_name,
+            ])->assertOk()->assertJson(['uid' => (string) $target->id]);
+
+            $target->refresh();
+            $this->assertSame('standard', $target->access_level);
+        }
+    }
+
     public function test_admin_cannot_delete_own_account(): void
     {
         $admin = $this->createUser('admin', [
