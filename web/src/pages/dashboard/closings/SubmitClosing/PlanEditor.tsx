@@ -18,6 +18,7 @@ import {
   createNavigationGuard,
 } from "../../../../components/ui";
 import {
+  TbOutlineMinus,
   TbOutlinePlus,
   TbOutlinePencil,
   TbOutlineTrash,
@@ -82,6 +83,18 @@ const serializePremiumRowDrafts = (rows: PremiumManagerRowDraft[]) =>
       frequency,
     })),
   );
+
+const formatPremiumDraftValue = (value?: number): string => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed.toFixed(2) : "";
+};
+
+const parsePositiveWholeQuantity = (value: string): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && Number.isInteger(parsed) && parsed > 0
+    ? parsed
+    : null;
+};
 
 type PremiumManagerTarget = {
   scope: "product" | "rider";
@@ -488,10 +501,7 @@ const PlanEditor: Component = () => {
   ): PremiumManagerRowDraft => ({
     id: row?.id || generateRowId(),
     quantity: String(Math.max(1, row?.quantity || 1)),
-    premium:
-      row && Number.isFinite(row.premium) && row.premium > 0
-        ? String(row.premium)
-        : "",
+    premium: formatPremiumDraftValue(row?.premium),
     frequency:
       row?.frequency ||
       getDefaultRowEditorFrequency(current, editor, row?.frequency || ""),
@@ -562,6 +572,17 @@ const PlanEditor: Component = () => {
     highlightRow(nextRow.id);
   };
 
+  const stepManagedRowQuantity = (rowId: string, delta: number) => {
+    updateManagedRow(rowId, (draftRow) => {
+      const currentQuantity = parsePositiveWholeQuantity(draftRow.quantity) ?? 0;
+      const nextQuantity = Math.max(1, currentQuantity + delta);
+      return {
+        ...draftRow,
+        quantity: String(nextQuantity),
+      };
+    });
+  };
+
   const removeManagedRow = (rowId: string) => {
     const current = editingProduct();
     setRowEditor((prev) => {
@@ -587,12 +608,8 @@ const PlanEditor: Component = () => {
     if (!row.quantity.trim()) {
       return "Quantity is required.";
     }
-    const parsedQuantity = Number(row.quantity);
-    if (
-      !Number.isFinite(parsedQuantity) ||
-      !Number.isInteger(parsedQuantity) ||
-      parsedQuantity <= 0
-    ) {
+    const parsedQuantity = parsePositiveWholeQuantity(row.quantity);
+    if (parsedQuantity === null) {
       return "Quantity must be a positive whole number.";
     }
     if (!row.premium.trim()) {
@@ -621,7 +638,7 @@ const PlanEditor: Component = () => {
       }
       parsedRows.push({
         id: row.id,
-        quantity: Number(row.quantity),
+        quantity: parsePositiveWholeQuantity(row.quantity) ?? 1,
         premium: parseFloat(row.premium),
         frequency: row.frequency,
       });
@@ -1163,8 +1180,8 @@ const PlanEditor: Component = () => {
                       }`}
                     >
                       <Show when={product().premiumRows.length > 0}>
-                        <span class="absolute right-3 top-3 rounded-full bg-primary/10 p-2 text-primary">
-                          <TbOutlinePencil class="h-4 w-4" />
+                        <span class="pointer-events-none absolute -right-2 -top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-primary shadow-sm ring-1 ring-slate-200">
+                          <TbOutlinePencil class="h-3.5 w-3.5" />
                         </span>
                       </Show>
                       <div class="flex flex-col items-center justify-center gap-3 text-center">
@@ -1358,8 +1375,8 @@ const PlanEditor: Component = () => {
                                       }`}
                                     >
                                       <Show when={rider.premiumRows.length > 0}>
-                                        <span class="absolute right-3 top-3 rounded-full bg-primary/10 p-2 text-primary">
-                                          <TbOutlinePencil class="h-4 w-4" />
+                                        <span class="pointer-events-none absolute -right-2 -top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-primary shadow-sm ring-1 ring-slate-200">
+                                          <TbOutlinePencil class="h-3.5 w-3.5" />
                                         </span>
                                       </Show>
                                       <div class="flex flex-col items-center justify-center gap-3 text-center">
@@ -1479,12 +1496,9 @@ const PlanEditor: Component = () => {
                       const currentRow = row;
                       const quantityInvalid = () => {
                         const draftRow = currentRow();
-                        const parsed = Number(draftRow.quantity);
                         return (
                           !draftRow.quantity.trim() ||
-                          !Number.isFinite(parsed) ||
-                          !Number.isInteger(parsed) ||
-                          parsed <= 0
+                          parsePositiveWholeQuantity(draftRow.quantity) === null
                         );
                       };
                       const premiumInvalid = () => {
@@ -1499,53 +1513,76 @@ const PlanEditor: Component = () => {
 
                       return (
                         <div
-                          class={`rounded-2xl border bg-white p-4 shadow-sm ${
+                          class={`relative rounded-2xl border bg-white p-4 shadow-sm ${
                             row().id === highlightedRowId()
                               ? "animate-row-highlight border-primary/30 bg-primary/5"
                               : "border-slate-200"
                           }`}
                         >
-                          <div class="mb-3 flex items-center justify-between gap-3">
-                            <div class="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                              Entry {index + 1}
-                            </div>
-                            <Show when={modalRows().length > 1}>
-                              <IconButton
-                                type="button"
-                                onClick={() => removeManagedRow(row().id)}
-                                class="text-red-500 hover:bg-red-50 hover:text-red-600"
-                                title="Delete entry"
-                                aria-label={`Delete entry ${index + 1}`}
-                              >
-                                <TbOutlineTrash />
-                              </IconButton>
-                            </Show>
-                          </div>
+                          <Show when={modalRows().length > 1}>
+                            <IconButton
+                              type="button"
+                              size="sm"
+                              onClick={() => removeManagedRow(row().id)}
+                              class="absolute -right-2 -top-2 z-10 bg-white text-red-500 shadow-sm ring-1 ring-slate-200 hover:bg-red-50 hover:text-red-600"
+                              title="Delete entry"
+                              aria-label={`Delete entry ${index + 1}`}
+                            >
+                              <TbOutlineTrash />
+                            </IconButton>
+                          </Show>
 
-                          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          <div class="grid grid-cols-[0.85fr_1.15fr] gap-3 sm:grid-cols-[0.8fr_1.2fr_1fr]">
                             <div>
                               <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                                 Quantity
                               </label>
-                              <input
-                                type="number"
-                                inputMode="numeric"
-                                min="1"
-                                step="1"
-                                autocomplete="off"
-                                value={currentRow().quantity}
-                                onInput={(e) =>
-                                  updateManagedRow(row().id, (draftRow) => ({
-                                    ...draftRow,
-                                    quantity: e.currentTarget.value,
-                                  }))
-                                }
-                                class={`w-full rounded-md border bg-white px-3 py-2.5 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                              <div
+                                class={`relative h-11 rounded-md border bg-white focus-within:ring-2 ${
                                   quantityInvalid()
-                                    ? "border-red-300 bg-red-50/40 focus:ring-red-200"
-                                    : "border-slate-300 focus:border-primary focus:ring-primary/20"
+                                    ? "border-red-300 bg-red-50/40 focus-within:ring-red-200"
+                                    : "border-slate-300 focus-within:border-primary focus-within:ring-primary/20"
                                 }`}
-                              />
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    stepManagedRowQuantity(row().id, -1)
+                                  }
+                                  aria-label={`Decrease quantity for entry ${index + 1}`}
+                                  title="Decrease quantity"
+                                  class="absolute inset-y-0 left-2 flex items-center justify-center border-0 bg-transparent p-0 text-slate-400 transition hover:text-slate-700 focus:outline-none"
+                                >
+                                  <TbOutlineMinus class="h-3.5 w-3.5" />
+                                </button>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  autocomplete="off"
+                                  aria-label={`Quantity for entry ${index + 1}`}
+                                  value={currentRow().quantity}
+                                  onFocus={(e) => e.currentTarget.select()}
+                                  onInput={(e) =>
+                                    updateManagedRow(row().id, (draftRow) => ({
+                                      ...draftRow,
+                                      quantity: e.currentTarget.value,
+                                    }))
+                                  }
+                                  class="h-full w-full border-0 bg-transparent px-0 py-2 text-center text-base text-slate-950 placeholder:text-slate-500 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    stepManagedRowQuantity(row().id, 1)
+                                  }
+                                  aria-label={`Increase quantity for entry ${index + 1}`}
+                                  title="Increase quantity"
+                                  class="absolute inset-y-0 right-2 flex items-center justify-center border-0 bg-transparent p-0 text-slate-400 transition hover:text-slate-700 focus:outline-none"
+                                >
+                                  <TbOutlinePlus class="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </div>
 
                             <div>
@@ -1567,7 +1604,7 @@ const PlanEditor: Component = () => {
                                       premium: e.currentTarget.value,
                                     }))
                                   }
-                                  class={`w-full rounded-md border bg-white py-2.5 pl-8 pr-3 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                                  class={`h-11 w-full rounded-md border bg-white py-2.5 pl-8 pr-3 text-base text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
                                     premiumInvalid()
                                       ? "border-red-300 bg-red-50/40 focus:ring-red-200"
                                       : "border-slate-300 focus:border-primary focus:ring-primary/20"
@@ -1590,7 +1627,7 @@ const PlanEditor: Component = () => {
                                       .value as PremiumFrequency,
                                   }))
                                 }
-                                class={`w-full rounded-md border px-3 py-2.5 text-base text-slate-950 focus:outline-none focus:ring-2 ${
+                                class={`h-10 w-full rounded-md border px-3 py-0 text-base leading-none text-slate-950 focus:outline-none focus:ring-2 ${
                                   frequencyInvalid()
                                     ? "border-red-300 bg-red-50/40 focus:ring-red-200"
                                     : "border-slate-300 bg-white focus:border-primary focus:ring-primary/20"

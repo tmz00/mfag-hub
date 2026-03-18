@@ -15,4 +15,15 @@ describe("consolidatePremiumRowsByAmountAndFrequency", () => {
       { quantity: 3, premium: 50, frequency: "Quarterly" },
     ]);
   });
+
+  it("groups premiums using two-decimal normalization for the key", () => {
+    expect(
+      consolidatePremiumRowsByAmountAndFrequency([
+        { quantity: 1, premium: 0.1 + 0.2, frequency: "Annual" },
+        { quantity: 2, premium: 0.3, frequency: "Annual" },
+      ]),
+    ).toEqual([
+      { quantity: 3, premium: 0.30000000000000004, frequency: "Annual" },
+    ]);
+  });
 });

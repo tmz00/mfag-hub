@@ -20,7 +20,7 @@ export const consolidatePremiumRowsByAmountAndFrequency = (
     const premium = Number(row?.premium) || 0;
     const quantity = Math.max(1, Number(row?.quantity) || 1);
     const frequency = String(row?.frequency ?? "").trim();
-    const key = `${premium}::${frequency}`;
+    const key = `${premium.toFixed(2)}::${frequency}`;
 
     const existing = rowsByKey.get(key);
     if (existing) {

@@ -12,7 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__ . '/../routes/api.php',
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
-        apiPrefix: 'api',
+        apiPrefix: '',
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
@@ -21,7 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // API-only app: do not redirect unauthenticated requests to a web login route.
         // Returning null lets auth middleware respond with 401 for API requests.
-        $middleware->redirectGuestsTo(static fn () => null);
+        $middleware->redirectGuestsTo(static fn() => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (AuthenticationException $e, Request $request) {

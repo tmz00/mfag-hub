@@ -119,6 +119,7 @@ export default defineConfig(({ mode }) => {
           target: apiProxyTarget,
           changeOrigin: true,
           secure: false,
+          rewrite: (path) => path.replace(/^\/api(?=\/|$)/, ""),
         },
         "/sanctum": {
           target: apiProxyTarget,

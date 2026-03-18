@@ -31,6 +31,11 @@
     }
   },
   "scripts": {
+    "post-autoload-dump": [
+      "@php -r \"@unlink(__DIR__.'/bootstrap/cache/packages.php'); @unlink(__DIR__.'/bootstrap/cache/services.php');\"",
+      "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+      "@php artisan package:discover --ansi"
+    ],
     "post-root-package-install": [
       "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
     ],
