@@ -38,6 +38,8 @@ function base64UrlToArrayBuffer(base64Url: string): ArrayBuffer {
 
 class PushService {
   private cachedPublicKey: string | null = null;
+  private subscriptionSyncPromise: Promise<boolean> | null = null;
+  private subscriptionSyncCanPrompt = false;
 
   private mapPermissionState(
     state: PermissionState | NotificationPermission
@@ -154,7 +156,9 @@ class PushService {
     return key;
   }
 
-  async syncSubscription(options?: { askPermission?: boolean }): Promise<boolean> {
+  private async syncSubscriptionInternal(options?: {
+    askPermission?: boolean;
+  }): Promise<boolean> {
     const askPermission = Boolean(options?.askPermission);
     if (!this.isSupported()) return false;
 
@@ -198,6 +202,32 @@ class PushService {
     });
 
     return true;
+  }
+
+  async syncSubscription(options?: { askPermission?: boolean }): Promise<boolean> {
+    const askPermission = Boolean(options?.askPermission);
+
+    if (this.subscriptionSyncPromise) {
+      if (!askPermission || this.subscriptionSyncCanPrompt) {
+        return this.subscriptionSyncPromise;
+      }
+
+      try {
+        await this.subscriptionSyncPromise;
+      } catch {
+        // Let the prompted retry run even if the background attempt failed.
+      }
+    }
+
+    this.subscriptionSyncCanPrompt = askPermission;
+    const syncPromise = this.syncSubscriptionInternal({ askPermission }).finally(() => {
+      if (this.subscriptionSyncPromise === syncPromise) {
+        this.subscriptionSyncPromise = null;
+        this.subscriptionSyncCanPrompt = false;
+      }
+    });
+    this.subscriptionSyncPromise = syncPromise;
+    return syncPromise;
   }
 
   async unsubscribeCurrentDevice(): Promise<void> {

@@ -286,6 +286,7 @@ type PushGateReason =
   | "verification-failed";
 
 const App: Component = () => {
+  const MAX_PUSH_TRANSIENT_RETRIES = 3;
   const [authReady, setAuthReady] = createSignal(false);
   const [authed, setAuthed] = createSignal(false);
   const [needRefresh, setNeedRefresh] = createSignal(false);
@@ -303,6 +304,7 @@ const App: Component = () => {
   let updateCheckInterval: number | undefined;
   let pushGateCheckRun = 0;
   let pushGateRetryTimer: number | undefined;
+  let pushGateTransientRetryCount = 0;
   const openPushGate = (reason: PushGateReason, message: string) => {
     setPushGateReason(reason);
     setPushGateMessage(message);
@@ -313,6 +315,10 @@ const App: Component = () => {
     setPushGateOpen(false);
     setPushGateReason(null);
     setPushGateMessage("");
+  };
+
+  const resetPushGateTransientRetries = () => {
+    pushGateTransientRetryCount = 0;
   };
 
   const schedulePushGateRetry = (delayMs: number = 1600) => {
@@ -337,6 +343,7 @@ const App: Component = () => {
     const showCheckingState = blockUi || Boolean(options?.askPermission);
     const user = authService.getCurrentUser();
     if (!user) {
+      resetPushGateTransientRetries();
       if (runId === pushGateCheckRun) {
         closePushGate();
         setPushGateChecking(false);
@@ -347,6 +354,7 @@ const App: Component = () => {
 
     // Desktop users are not required to enable push notifications.
     if (!isMobileDevice()) {
+      resetPushGateTransientRetries();
       if (runId === pushGateCheckRun) {
         closePushGate();
         setPushGateChecking(false);
@@ -366,6 +374,7 @@ const App: Component = () => {
 
     try {
       if (!pushService.isSupported()) {
+        resetPushGateTransientRetries();
         if (runId === pushGateCheckRun) {
           closePushGate();
           setPushGateResolved(true);
@@ -381,6 +390,7 @@ const App: Component = () => {
 
       const permission = await pushService.getPermissionFresh();
       if (permission === "default") {
+        resetPushGateTransientRetries();
         if (runId === pushGateCheckRun) {
           openPushGate(
             "permission-default",
@@ -391,6 +401,7 @@ const App: Component = () => {
       }
 
       if (permission === "denied") {
+        resetPushGateTransientRetries();
         if (runId === pushGateCheckRun) {
           openPushGate(
             "permission-denied",
@@ -402,6 +413,7 @@ const App: Component = () => {
 
       const hasExistingSubscription = await pushService.hasBrowserSubscription();
       if (hasExistingSubscription) {
+        resetPushGateTransientRetries();
         if (!promptedSync) {
           void pushService.syncSubscription({ askPermission: false }).catch((error) => {
             console.warn("Push subscription refresh failed", error);
@@ -418,6 +430,7 @@ const App: Component = () => {
         promptedSync ||
         (await pushService.syncSubscription({ askPermission: false }));
       if (!hasSubscription) {
+        resetPushGateTransientRetries();
         if (runId === pushGateCheckRun) {
           openPushGate(
             "subscription-missing",
@@ -427,22 +440,47 @@ const App: Component = () => {
         return false;
       }
 
+      resetPushGateTransientRetries();
       if (runId === pushGateCheckRun) {
         closePushGate();
       }
       return true;
     } catch (error) {
+      if (
+        !options?.askPermission &&
+        pushService.getPermission() === "granted" &&
+        isTransientPushInitializationError(error)
+      ) {
+        pushGateTransientRetryCount += 1;
+        if (pushGateTransientRetryCount <= MAX_PUSH_TRANSIENT_RETRIES) {
+          console.warn(
+            `Push compliance check transient failure (${pushGateTransientRetryCount}/${MAX_PUSH_TRANSIENT_RETRIES})`,
+            error,
+          );
+          if (runId === pushGateCheckRun) {
+            closePushGate();
+          }
+          schedulePushGateRetry(
+            Math.min(1600 * 2 ** (pushGateTransientRetryCount - 1), 8000),
+          );
+          return true;
+        }
+      }
+
       console.error("Push compliance check failed", error);
+      resetPushGateTransientRetries();
       if (
         !options?.askPermission &&
         pushService.getPermission() === "granted" &&
         isTransientPushInitializationError(error)
       ) {
         if (runId === pushGateCheckRun) {
-          closePushGate();
+          openPushGate(
+            "verification-failed",
+            "Push service failed to initialize. Restart your device, then reopen the app. If this keeps happening, open https://mfag.sg in your browser, complete any security check, then try again.",
+          );
         }
-        schedulePushGateRetry();
-        return true;
+        return false;
       }
       if (runId === pushGateCheckRun) {
         openPushGate(
@@ -450,7 +488,7 @@ const App: Component = () => {
           error instanceof Error &&
             isCaptchaChallengeErrorMessage(error.message)
             ? error.message
-            : "Unable to verify notification status right now. Check your connection and close/reopen the app.",
+            : "Unable to verify notification status right now. Check your connection, close and reopen the app, and if needed restart your device.",
         );
       }
       return false;
@@ -617,14 +655,6 @@ const App: Component = () => {
                           Enable Notifications
                         </button>
                       </Show>
-                      <button
-                        type="button"
-                        onClick={() => window.location.reload()}
-                        disabled={pushGateActionBusy()}
-                        class="mt-2 w-full rounded-lg border border-primary/30 px-4 py-2.5 text-base font-semibold text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Reload App
-                      </button>
                       <button
                         type="button"
                         onClick={() => void authService.signOut()}
