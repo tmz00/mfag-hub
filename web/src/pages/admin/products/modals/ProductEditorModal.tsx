@@ -14,6 +14,7 @@ import {
   TbOutlineCheck,
 } from "solid-icons/tb";
 import { Button, EditModal, IconButton } from "../../../../components/ui";
+import { getCaptchaAwareErrorMessage } from "../../../../services/authService";
 import {
   productsService,
   type BasePlan,
@@ -564,7 +565,7 @@ const ProductEditorModal: Component<Props> = (props) => {
       props.onSaved(updated, label || "Product");
     } catch (err) {
       console.error("Failed to save product", err);
-      props.onError("Unable to save product.");
+      props.onError(getCaptchaAwareErrorMessage(err, "Unable to save product."));
     } finally {
       setSaving(false);
     }

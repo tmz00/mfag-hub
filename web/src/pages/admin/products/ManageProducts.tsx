@@ -15,6 +15,7 @@ import {
   ConfirmModal,
   LoadingState,
 } from "../../../components/ui";
+import { getCaptchaAwareErrorMessage } from "../../../services/authService";
 import {
   productsService,
   type BasePlan,
@@ -73,22 +74,34 @@ const ManageProducts: Component = () => {
       setCatalog(data);
     } catch (err) {
       console.error("Failed to load products", err);
-      setAccessError("Unable to load products data.");
+      setAccessError(
+        getCaptchaAwareErrorMessage(err, "Unable to load products data."),
+      );
     } finally {
       setLoading(false);
     }
   };
 
   onMount(async () => {
-    const { accessLevel, isAdmin } =
-      await teamService.getCurrentUserAccessLevel();
-    const access = accessLevel.toLowerCase();
-    if (!isAdmin && access !== "editor") {
-      setAccessError("You do not have access to manage products.");
+    try {
+      const { accessLevel, isAdmin } =
+        await teamService.getCurrentUserAccessLevel();
+      const access = accessLevel.toLowerCase();
+      if (!isAdmin && access !== "editor") {
+        setAccessError("You do not have access to manage products.");
+        setLoading(false);
+        return;
+      }
+      await loadCatalog();
+    } catch (err) {
+      setAccessError(
+        getCaptchaAwareErrorMessage(
+          err,
+          "Unable to verify your access right now.",
+        ),
+      );
       setLoading(false);
-      return;
     }
-    await loadCatalog();
   });
 
   const basePlans = createMemo<BasePlan[]>(() => catalog()?.basePlans || []);
@@ -141,7 +154,7 @@ const ManageProducts: Component = () => {
       console.error("Failed to delete product", err);
       setResultDialog({
         title: "Error",
-        message: "Unable to delete product.",
+        message: getCaptchaAwareErrorMessage(err, "Unable to delete product."),
         variant: "danger",
       });
     } finally {

@@ -12,6 +12,7 @@ import {
 } from "solid-icons/tb";
 
 import { EditModal, LoadingState, ReorderList } from "../../../../components/ui";
+import { getCaptchaAwareErrorMessage } from "../../../../services/authService";
 import {
   productsService,
   type BasePlan,
@@ -116,7 +117,9 @@ const ProductReorderModal: Component<Props> = (props) => {
       );
     } catch (err) {
       console.error("Failed to load products", err);
-      setError("Unable to load products catalog.");
+      setError(
+        getCaptchaAwareErrorMessage(err, "Unable to load products catalog."),
+      );
     } finally {
       setLoading(false);
     }
@@ -224,7 +227,10 @@ const ProductReorderModal: Component<Props> = (props) => {
       props.onSaved();
     } catch (err) {
       console.error("Failed to save category order", err);
-      const message = "Unable to save category ordering.";
+      const message = getCaptchaAwareErrorMessage(
+        err,
+        "Unable to save category ordering.",
+      );
       setError(message);
       props.onError(message);
     } finally {

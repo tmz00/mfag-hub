@@ -12,6 +12,8 @@ export const API_BASE = shouldUseDevProxy
 export const TOKEN_KEY = "authToken";
 export const REFRESH_TOKEN_KEY = "refreshToken";
 const USER_KEY = "authUser";
+const CAPTCHA_CHALLENGE_MESSAGE =
+  "Security check required. Open the main website https://mfag.sg in your browser, complete the CAPTCHA if prompted, then return here and try again.";
 
 export interface AuthCredentials {
   email: string;
@@ -136,7 +138,7 @@ class ApiAuthService implements AuthService {
     }
 
     if (!this.token && this.refreshToken) {
-      void this.refreshAccessToken();
+      void this.refreshAccessToken().catch(() => undefined);
     }
   }
 
@@ -202,11 +204,26 @@ class ApiAuthService implements AuthService {
           body: JSON.stringify({ refreshToken: this.refreshToken }),
         });
 
+        let fallbackText: string | null = null;
         let payload: VerifyOtpApiResponse | null = null;
         try {
           payload = (await response.json()) as VerifyOtpApiResponse;
         } catch {
           payload = null;
+          try {
+            const raw = await response.text();
+            fallbackText = raw.trim() || null;
+          } catch {
+            fallbackText = null;
+          }
+        }
+
+        const captchaChallengeMessage = getCaptchaChallengeMessage(
+          response,
+          fallbackText,
+        );
+        if (captchaChallengeMessage) {
+          throw new Error(captchaChallengeMessage);
         }
 
         if (!response.ok || !payload?.token) {
@@ -219,7 +236,13 @@ class ApiAuthService implements AuthService {
         const user = this.toAuthUser(payload.user);
         this.saveAuth(payload.token, user, payload.refreshToken);
         return true;
-      } catch {
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          isCaptchaChallengeErrorMessage(error.message)
+        ) {
+          throw error;
+        }
         return false;
       } finally {
         this.refreshPromise = null;
@@ -278,6 +301,11 @@ class ApiAuthService implements AuthService {
       }
     }
 
+    const captchaChallengeMessage = getCaptchaChallengeMessage(response, fallbackText);
+    if (captchaChallengeMessage) {
+      throw new Error(captchaChallengeMessage);
+    }
+
     if (!response.ok) {
       if (requiresAuth && response.status === 401 && !isRetry) {
         const refreshed = await this.refreshAccessToken();
@@ -294,7 +322,7 @@ class ApiAuthService implements AuthService {
       const message =
         firstValidationMessage(payload?.errors) ||
         payload?.message ||
-        fallbackText ||
+        fallbackErrorMessage(fallbackText) ||
         (response.status === 429
           ? "Too many attempts. Please wait and try again"
           : "Something went wrong. Please try again");
@@ -310,9 +338,16 @@ class ApiAuthService implements AuthService {
 
   private async refreshCurrentUser(): Promise<void> {
     if (!this.token) {
-      const ok = await this.refreshAccessToken();
-      if (!ok) {
-        this.clearAuth(false);
+      try {
+        await this.refreshAccessToken();
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (isLikelyConnectivityErrorMessage(error.message) ||
+            isCaptchaChallengeErrorMessage(error.message))
+        ) {
+          return;
+        }
       }
       return;
     }
@@ -339,7 +374,8 @@ class ApiAuthService implements AuthService {
     } catch (error) {
       if (
         error instanceof Error &&
-        isLikelyConnectivityErrorMessage(error.message)
+        (isLikelyConnectivityErrorMessage(error.message) ||
+          isCaptchaChallengeErrorMessage(error.message))
       ) {
         return;
       }
@@ -537,6 +573,11 @@ export async function authFetch(
     );
   }
 
+  const captchaChallengeMessage = getCaptchaChallengeMessage(response);
+  if (captchaChallengeMessage) {
+    throw new Error(captchaChallengeMessage);
+  }
+
   if (response.status === 401 && !isRetry) {
     const refreshed = await authService.ensureSession(true);
     if (refreshed) {
@@ -575,6 +616,11 @@ export async function authJson<T>(
     }
   }
 
+  const captchaChallengeMessage = getCaptchaChallengeMessage(response, fallbackText);
+  if (captchaChallengeMessage) {
+    throw new Error(captchaChallengeMessage);
+  }
+
   if (!response.ok) {
     const message =
       firstValidationMessage(payload?.errors) ||
@@ -584,6 +630,10 @@ export async function authJson<T>(
         ? "Unauthenticated."
         : options.defaultErrorMessage || "Request failed");
     throw new Error(message);
+  }
+
+  if (response.status !== 204 && payload === null) {
+    throw new Error("Server returned an unexpected response.");
   }
 
   return payload as T;
@@ -640,6 +690,68 @@ function fallbackErrorMessage(rawText: string | null): string | null {
 
   const [firstLine] = text.split(/\r?\n/, 1);
   return truncateMessage(firstLine?.trim() || text);
+}
+
+function getCaptchaChallengeMessage(
+  response: Response,
+  rawText?: string | null,
+): string | null {
+  return isCaptchaChallengeResponse(response, rawText)
+    ? CAPTCHA_CHALLENGE_MESSAGE
+    : null;
+}
+
+function isCaptchaChallengeResponse(
+  response: Response,
+  rawText?: string | null,
+): boolean {
+  const sgCaptcha = String(response.headers.get("sg-captcha") || "").toLowerCase();
+  if (sgCaptcha.includes("challenge")) {
+    return true;
+  }
+
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  const xRobotsTag = String(response.headers.get("x-robots-tag") || "").toLowerCase();
+  if (
+    !rawText &&
+    response.status === 202 &&
+    contentType.includes("text/html") &&
+    xRobotsTag.includes("noindex")
+  ) {
+    return true;
+  }
+
+  if (!rawText || !contentType.includes("text/html")) {
+    return false;
+  }
+
+  const extractedMessage = String(extractHtmlErrorMessage(rawText) || "").toLowerCase();
+  const normalizedHtml = rawText.toLowerCase();
+  return (
+    extractedMessage.includes("captcha") ||
+    extractedMessage.includes("siteground") ||
+    normalizedHtml.includes("sg-captcha") ||
+    normalizedHtml.includes("siteground") ||
+    normalizedHtml.includes("captcha challenge")
+  );
+}
+
+export function isCaptchaChallengeErrorMessage(message: string): boolean {
+  return String(message || "").includes(CAPTCHA_CHALLENGE_MESSAGE);
+}
+
+export function getCaptchaAwareErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+): string {
+  if (
+    error instanceof Error &&
+    isCaptchaChallengeErrorMessage(error.message)
+  ) {
+    return error.message;
+  }
+
+  return fallbackMessage;
 }
 
 function extractHtmlErrorMessage(html: string): string | null {

@@ -11,6 +11,7 @@ import {
 } from "solid-js";
 import { TbOutlineArrowLeft } from "solid-icons/tb";
 import { IconButton, LoadingState } from "../../../components/ui";
+import { getCaptchaAwareErrorMessage } from "../../../services/authService";
 import { getHandbookEntries } from "../../../services/handbookContentService";
 
 type HandbookEntry = {
@@ -81,7 +82,12 @@ const HandbookSearchModal: Component<Props> = (props) => {
       setSearchLoaded(true);
     } catch (error) {
       console.error("Failed to load handbook search index", error);
-      setSearchError("Unable to load handbook search right now.");
+      setSearchError(
+        getCaptchaAwareErrorMessage(
+          error,
+          "Unable to load handbook search right now.",
+        ),
+      );
     } finally {
       setSearchLoading(false);
     }

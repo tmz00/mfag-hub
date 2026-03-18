@@ -233,4 +233,91 @@ describe("authService", () => {
       "SQLSTATE[42S02]: Base table or view not found",
     );
   });
+
+  it("throws a clear message when authFetch receives an SG captcha challenge", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("<html><title>Captcha</title></html>", {
+        status: 202,
+        headers: {
+          "Content-Type": "text/html",
+          "sg-captcha": "challenge",
+          "x-robots-tag": "noindex",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.TOKEN_KEY, "token-1");
+
+    await expect(mod.authFetch("/api/team", { method: "GET" })).rejects.toThrow(
+      "Open the main website https://mfag.sg",
+    );
+  });
+
+  it("throws a clear message when OTP request receives an SG captcha challenge", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("<html><title>Captcha</title></html>", {
+        status: 202,
+        headers: {
+          "Content-Type": "text/html",
+          "sg-captcha": "challenge",
+          "x-robots-tag": "noindex",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+
+    await expect(
+      mod.authService.requestOtp({
+        email: "user@example.test",
+        fscCode: "12345",
+      }),
+    ).rejects.toThrow("Open the main website https://mfag.sg");
+  });
+
+  it("throws a clear message when refresh token request receives an SG captcha challenge", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("<html><title>Captcha</title></html>", {
+        status: 202,
+        headers: {
+          "Content-Type": "text/html",
+          "sg-captcha": "challenge",
+          "x-robots-tag": "noindex",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.REFRESH_TOKEN_KEY, "refresh-token");
+
+    await expect(mod.authService.ensureSession(true)).rejects.toThrow(
+      "Open the main website https://mfag.sg",
+    );
+    expect(localStorage.getItem(mod.REFRESH_TOKEN_KEY)).toBe("refresh-token");
+  });
+
+  it("surfaces captcha guidance when authFetch needs refresh before request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("<html><title>Captcha</title></html>", {
+        status: 202,
+        headers: {
+          "Content-Type": "text/html",
+          "sg-captcha": "challenge",
+          "x-robots-tag": "noindex",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mod = await loadAuthModule();
+    localStorage.setItem(mod.REFRESH_TOKEN_KEY, "refresh-token");
+
+    await expect(mod.authFetch("/api/team", { method: "GET" })).rejects.toThrow(
+      "Open the main website https://mfag.sg",
+    );
+  });
 });

@@ -20,7 +20,10 @@ import {
   LoadingState,
   createConfirm,
 } from "../../../components/ui";
-import { authService } from "../../../services/authService";
+import {
+  authService,
+  getCaptchaAwareErrorMessage,
+} from "../../../services/authService";
 import {
   getHandbookEntries,
   saveHandbookEntries,
@@ -128,7 +131,7 @@ const ManageHandbook: Component = () => {
       }
     } catch (err) {
       console.error("Failed to load handbook", err);
-      setError("Unable to load handbook data.");
+      setError(getCaptchaAwareErrorMessage(err, "Unable to load handbook data."));
     } finally {
       setLoading(false);
     }
@@ -344,7 +347,9 @@ const ManageHandbook: Component = () => {
       return true;
     } catch (err) {
       console.error("Failed to save handbook", err);
-      setError("Unable to save handbook changes.");
+      setError(
+        getCaptchaAwareErrorMessage(err, "Unable to save handbook changes."),
+      );
       return false;
     } finally {
       setSaving(false);

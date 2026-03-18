@@ -13,6 +13,7 @@ import {
   TbOutlineBuilding,
   TbOutlineChevronDown,
 } from "solid-icons/tb";
+import { getCaptchaAwareErrorMessage } from "../../../services/authService";
 
 import {
   teamService,
@@ -870,7 +871,12 @@ const ManageUsers: Component<ManageUsersProps> = (props) => {
           }
         >
           <Show when={props.usersError}>
-            <Alert type="error">Unable to load users right now.</Alert>
+            <Alert type="error">
+              {getCaptchaAwareErrorMessage(
+                props.usersError,
+                "Unable to load users right now.",
+              )}
+            </Alert>
           </Show>
           <div class="flex flex-col gap-4">
             <div class="flex flex-wrap items-center justify-between gap-3">

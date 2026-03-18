@@ -11,6 +11,7 @@ import {
   TbOutlineTrash,
 } from "solid-icons/tb";
 import { EditModal, Button, IconButton, Spinner } from "../../../../components/ui";
+import { getCaptchaAwareErrorMessage } from "../../../../services/authService";
 import {
   productsService,
   type ProductCatalog,
@@ -45,7 +46,7 @@ const ProductBackupsModal: Component<Props> = (props) => {
         setBackups(list);
       } catch (err) {
         console.error("Failed to load product backups", err);
-        setError("Unable to load backups.");
+        setError(getCaptchaAwareErrorMessage(err, "Unable to load backups."));
       } finally {
         setLoading(false);
       }
@@ -98,7 +99,7 @@ const ProductBackupsModal: Component<Props> = (props) => {
       props.onRestored();
     } catch (err) {
       console.error("Failed to restore product backup", err);
-      setError("Unable to restore backup.");
+      setError(getCaptchaAwareErrorMessage(err, "Unable to restore backup."));
     } finally {
       setRestoringId("");
     }
@@ -116,7 +117,7 @@ const ProductBackupsModal: Component<Props> = (props) => {
       props.onRestored();
     } catch (err) {
       console.error("Failed to import product data", err);
-      setError("Unable to import data.");
+      setError(getCaptchaAwareErrorMessage(err, "Unable to import data."));
     } finally {
       setRestoringId("");
     }
@@ -131,7 +132,7 @@ const ProductBackupsModal: Component<Props> = (props) => {
       setPendingDelete(null);
     } catch (err) {
       console.error("Failed to delete product backup", err);
-      setError("Unable to delete backup.");
+      setError(getCaptchaAwareErrorMessage(err, "Unable to delete backup."));
     } finally {
       setDeletingId("");
     }

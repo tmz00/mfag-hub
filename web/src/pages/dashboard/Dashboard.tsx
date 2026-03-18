@@ -11,7 +11,10 @@ import { A, useNavigate } from "@solidjs/router";
 import { Dynamic } from "solid-js/web";
 import { TbOutlineSearch } from "solid-icons/tb";
 
-import { authService } from "../../services/authService";
+import {
+  authService,
+  getCaptchaAwareErrorMessage,
+} from "../../services/authService";
 import { getHandbookEntries } from "../../services/handbookContentService";
 import { notificationsService } from "../../services/notificationsService";
 import {
@@ -194,7 +197,9 @@ const Dashboard: Component = () => {
       setHandbookCategories(resolvedCategories.filter(Boolean));
     } catch (e) {
       console.error("Failed to load handbook", e);
-      setHandbookError("Unable to load handbook categories");
+      setHandbookError(
+        getCaptchaAwareErrorMessage(e, "Unable to load handbook categories"),
+      );
     } finally {
       setHandbookLoading(false);
     }

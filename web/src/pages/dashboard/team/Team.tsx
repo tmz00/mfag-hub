@@ -32,6 +32,7 @@ import {
   isStaffUser,
   type TeamUser,
 } from "../../../services/teamService";
+import { getCaptchaAwareErrorMessage } from "../../../services/authService";
 
 const monthNames = [
   "January",
@@ -341,7 +342,10 @@ const Team: Component = () => {
               when={!membersError()}
               fallback={
                 <div class="rounded-xl border border-red-200 bg-red-50 p-4 text-base text-red-700 shadow-sm">
-                  Unable to load team members right now.
+                  {getCaptchaAwareErrorMessage(
+                    membersError(),
+                    "Unable to load team members right now.",
+                  )}
                 </div>
               }
             >

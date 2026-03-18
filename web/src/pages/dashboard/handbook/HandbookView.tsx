@@ -12,6 +12,7 @@ import { useNavigate, useParams, useSearchParams } from "@solidjs/router";
 import { TbOutlineArrowLeft, TbOutlineSearch } from "solid-icons/tb";
 import { AuthenticatedImage } from "../../../components/AuthenticatedImage";
 import { PageShell, Button, LoadingState } from "../../../components/ui";
+import { getCaptchaAwareErrorMessage } from "../../../services/authService";
 
 import { getHandbookEntries } from "../../../services/handbookContentService";
 import {
@@ -140,7 +141,10 @@ const HandbookView: Component = () => {
       console.error("Failed to open handbook file", err);
       if (requiresAuth) {
         setFileOpenError(
-          "Unable to open this file right now. Please try again.",
+          getCaptchaAwareErrorMessage(
+            err,
+            "Unable to open this file right now. Please try again.",
+          ),
         );
         return;
       }
@@ -201,7 +205,9 @@ const HandbookView: Component = () => {
       });
     } catch (err) {
       console.error("Failed to load handbook category", err);
-      setError("Unable to load handbook category.");
+      setError(
+        getCaptchaAwareErrorMessage(err, "Unable to load handbook category."),
+      );
     } finally {
       setLoading(false);
     }

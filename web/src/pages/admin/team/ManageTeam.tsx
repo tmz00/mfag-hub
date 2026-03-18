@@ -33,6 +33,7 @@ import {
   TbOutlineTrash,
   TbOutlineChevronDown,
 } from "solid-icons/tb";
+import { getCaptchaAwareErrorMessage } from "../../../services/authService";
 
 const ManageTeam: Component = () => {
   const location = useLocation();
@@ -79,42 +80,56 @@ const ManageTeam: Component = () => {
     });
 
     void (async () => {
-      const { isAdmin } = await teamService.getCurrentUserAccessLevel();
+      try {
+        const { isAdmin } = await teamService.getCurrentUserAccessLevel();
 
-      unsubscribe = teamService.subscribeToTeamData(
-        (data) => {
-          // Map users
-          const mappedUsers = data.users.map((user) => ({
-            id: user.id,
-            nickname: user.nickname || "",
-            fullName: user.fullName || "",
-            email: isAdmin ? user.email : undefined,
-            accessLevel: isAdmin ? user.accessLevel || "standard" : "standard",
-            fscCode: user.fscCode || "",
-            agencyCode: user.agencyCode || "",
-            birthMonth: user.birthMonth,
-            birthDay: user.birthDay,
-            birthYear: user.birthYear,
-            contractMonth: user.contractMonth,
-            contractDay: user.contractDay,
-            contractYear: user.contractYear,
-          }));
-          const sorted = mappedUsers.sort((a, b) =>
-            (a.nickname || "").localeCompare(b.nickname || ""),
-          );
-          setUsers(sorted);
+        unsubscribe = teamService.subscribeToTeamData(
+          (data) => {
+            // Map users
+            const mappedUsers = data.users.map((user) => ({
+              id: user.id,
+              nickname: user.nickname || "",
+              fullName: user.fullName || "",
+              email: isAdmin ? user.email : undefined,
+              accessLevel: isAdmin ? user.accessLevel || "standard" : "standard",
+              fscCode: user.fscCode || "",
+              agencyCode: user.agencyCode || "",
+              birthMonth: user.birthMonth,
+              birthDay: user.birthDay,
+              birthYear: user.birthYear,
+              contractMonth: user.contractMonth,
+              contractDay: user.contractDay,
+              contractYear: user.contractYear,
+            }));
+            const sorted = mappedUsers.sort((a, b) =>
+              (a.nickname || "").localeCompare(b.nickname || ""),
+            );
+            setUsers(sorted);
 
-          // Preserve stored agency order
-          setAgencies([...data.agencies]);
+            // Preserve stored agency order
+            setAgencies([...data.agencies]);
 
-          setUsersLoading(false);
-          setUsersError(null);
-        },
-        (error) => {
-          setUsersError(error);
-          setUsersLoading(false);
-        },
-      );
+            setUsersLoading(false);
+            setUsersError(null);
+          },
+          (error) => {
+            setUsersError(error);
+            setUsersLoading(false);
+          },
+        );
+      } catch (error) {
+        setUsersError(
+          error instanceof Error
+            ? new Error(
+                getCaptchaAwareErrorMessage(
+                  error,
+                  "Unable to load users right now.",
+                ),
+              )
+            : error,
+        );
+        setUsersLoading(false);
+      }
     })();
   });
 

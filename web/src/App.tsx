@@ -22,7 +22,10 @@ import { Portal } from "solid-js/web";
 import { registerSW } from "virtual:pwa-register";
 
 import { teamService } from "./services/teamService";
-import { authService } from "./services/authService";
+import {
+  authService,
+  isCaptchaChallengeErrorMessage,
+} from "./services/authService";
 import {
   isTransientPushInitializationError,
   pushService,
@@ -444,7 +447,10 @@ const App: Component = () => {
       if (runId === pushGateCheckRun) {
         openPushGate(
           "verification-failed",
-          "Unable to verify notification status right now. Check your connection and close/reopen the app.",
+          error instanceof Error &&
+            isCaptchaChallengeErrorMessage(error.message)
+            ? error.message
+            : "Unable to verify notification status right now. Check your connection and close/reopen the app.",
         );
       }
       return false;
