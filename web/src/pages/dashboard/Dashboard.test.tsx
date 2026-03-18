@@ -93,6 +93,10 @@ vi.mock("../../components/HandbookCategoryGrid", () => ({
 }));
 
 vi.mock("../../services/authService", () => ({
+  getCaptchaAwareErrorMessage: (error: unknown, fallbackMessage: string) =>
+    error instanceof Error && error.message.includes("https://mfag.sg")
+      ? error.message
+      : fallbackMessage,
   authService: {
     onAuthStateChanged: (...args: unknown[]) => onAuthStateChangedMock(...args),
     getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args),

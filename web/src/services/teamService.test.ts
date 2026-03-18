@@ -7,6 +7,10 @@ const { authJsonMock, getCurrentUserMock } = vi.hoisted(() => ({
 
 vi.mock("./authService", () => ({
   authJson: (...args: unknown[]) => authJsonMock(...args),
+  getCaptchaAwareErrorMessage: (error: unknown, fallbackMessage: string) =>
+    error instanceof Error && error.message.includes("https://mfag.sg")
+      ? error.message
+      : fallbackMessage,
   authService: {
     getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args),
   },

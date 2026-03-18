@@ -63,6 +63,10 @@ vi.mock("./ProfileCard", () => ({
 }));
 
 vi.mock("../../../services/authService", () => ({
+  getCaptchaAwareErrorMessage: (error: unknown, fallbackMessage: string) =>
+    error instanceof Error && error.message.includes("https://mfag.sg")
+      ? error.message
+      : fallbackMessage,
   authService: {
     signOut: (...args: unknown[]) => signOutMock(...args),
   },

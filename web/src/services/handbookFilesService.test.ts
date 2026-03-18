@@ -9,6 +9,10 @@ vi.mock("./authService", () => ({
   API_BASE: "https://api.example.test",
   authJson: (...args: unknown[]) => authJsonMock(...args),
   authFetch: (...args: unknown[]) => authFetchMock(...args),
+  getCaptchaAwareErrorMessage: (error: unknown, fallbackMessage: string) =>
+    error instanceof Error && error.message.includes("https://mfag.sg")
+      ? error.message
+      : fallbackMessage,
 }));
 
 import {
