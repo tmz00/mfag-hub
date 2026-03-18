@@ -23,7 +23,10 @@ import { registerSW } from "virtual:pwa-register";
 
 import { teamService } from "./services/teamService";
 import { authService } from "./services/authService";
-import { pushService } from "./services/pushService";
+import {
+  isTransientPushInitializationError,
+  pushService,
+} from "./services/pushService";
 import { Button, Spinner } from "./components/ui";
 import Team from "./pages/dashboard/team/Team";
 import Closings from "./pages/dashboard/closings/Closings";
@@ -296,6 +299,7 @@ const App: Component = () => {
   >(null);
   let updateCheckInterval: number | undefined;
   let pushGateCheckRun = 0;
+  let pushGateRetryTimer: number | undefined;
   const openPushGate = (reason: PushGateReason, message: string) => {
     setPushGateReason(reason);
     setPushGateMessage(message);
@@ -306,6 +310,19 @@ const App: Component = () => {
     setPushGateOpen(false);
     setPushGateReason(null);
     setPushGateMessage("");
+  };
+
+  const schedulePushGateRetry = (delayMs: number = 1600) => {
+    if (typeof window === "undefined") return;
+    if (pushGateRetryTimer) {
+      window.clearTimeout(pushGateRetryTimer);
+    }
+    pushGateRetryTimer = window.setTimeout(() => {
+      pushGateRetryTimer = undefined;
+      if (document.visibilityState !== "visible") return;
+      if (!authService.getCurrentUser()) return;
+      void evaluatePushCompliance({ blockUi: false });
+    }, delayMs);
   };
 
   const evaluatePushCompliance = async (options?: {
@@ -380,11 +397,23 @@ const App: Component = () => {
         return false;
       }
 
-      const synced =
+      const hasExistingSubscription = await pushService.hasBrowserSubscription();
+      if (hasExistingSubscription) {
+        if (!promptedSync) {
+          void pushService.syncSubscription({ askPermission: false }).catch((error) => {
+            console.warn("Push subscription refresh failed", error);
+          });
+        }
+
+        if (runId === pushGateCheckRun) {
+          closePushGate();
+        }
+        return true;
+      }
+
+      const hasSubscription =
         promptedSync ||
         (await pushService.syncSubscription({ askPermission: false }));
-      const hasSubscription =
-        synced || (await pushService.hasBrowserSubscription());
       if (!hasSubscription) {
         if (runId === pushGateCheckRun) {
           openPushGate(
@@ -401,6 +430,17 @@ const App: Component = () => {
       return true;
     } catch (error) {
       console.error("Push compliance check failed", error);
+      if (
+        !options?.askPermission &&
+        pushService.getPermission() === "granted" &&
+        isTransientPushInitializationError(error)
+      ) {
+        if (runId === pushGateCheckRun) {
+          closePushGate();
+        }
+        schedulePushGateRetry();
+        return true;
+      }
       if (runId === pushGateCheckRun) {
         openPushGate(
           "verification-failed",
@@ -526,6 +566,7 @@ const App: Component = () => {
     });
     onCleanup(() => {
       if (updateCheckInterval) window.clearInterval(updateCheckInterval);
+      if (pushGateRetryTimer) window.clearTimeout(pushGateRetryTimer);
       clearPushForegroundRetryTimers();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleForeground);
@@ -570,6 +611,14 @@ const App: Component = () => {
                           Enable Notifications
                         </button>
                       </Show>
+                      <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        disabled={pushGateActionBusy()}
+                        class="mt-2 w-full rounded-lg border border-primary/30 px-4 py-2.5 text-base font-semibold text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Reload App
+                      </button>
                       <button
                         type="button"
                         onClick={() => void authService.signOut()}

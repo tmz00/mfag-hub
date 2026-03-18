@@ -5,6 +5,25 @@ type PushPublicKeyResponse = {
   configured?: boolean;
 };
 
+function readErrorText(error: unknown, key: "name" | "message"): string {
+  if (!error || typeof error !== "object") {
+    return "";
+  }
+
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : "";
+}
+
+export function isTransientPushInitializationError(error: unknown): boolean {
+  const name = readErrorText(error, "name");
+  const message = readErrorText(error, "message");
+
+  return (
+    name === "InvalidStateError" &&
+    /push service initialization failed/i.test(message)
+  );
+}
+
 function base64UrlToArrayBuffer(base64Url: string): ArrayBuffer {
   const normalized = base64Url.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
@@ -95,7 +114,6 @@ class PushService {
 
   async hasBrowserSubscription(): Promise<boolean> {
     if (!this.isSupported()) return false;
-    if ((await this.getPermissionFresh()) !== "granted") return false;
     try {
       const registration = await navigator.serviceWorker.ready;
       const existing = await registration.pushManager.getSubscription();
