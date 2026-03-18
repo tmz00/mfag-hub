@@ -11,6 +11,12 @@ describe("sanitizeHandbookHtml", () => {
     ).toBe("<p>Safe</p><a>Bad</a>");
   });
 
+  it("removes html comments", () => {
+    expect(
+      sanitizeHandbookHtml("<p>Safe</p><!-- injected payload --><p>Still safe</p>"),
+    ).toBe("<p>Safe</p><p>Still safe</p>");
+  });
+
   it("preserves allowed handbook markup", () => {
     expect(
       sanitizeHandbookHtml(

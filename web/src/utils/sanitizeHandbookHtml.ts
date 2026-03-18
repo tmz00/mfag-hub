@@ -301,6 +301,12 @@ export const sanitizeHandbookHtml = (html: string) => {
 
   const container = document.createElement("div");
   container.innerHTML = html;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_COMMENT);
+  const commentNodes: Node[] = [];
+  while (walker.nextNode()) {
+    commentNodes.push(walker.currentNode);
+  }
+  commentNodes.forEach((node) => node.parentNode?.removeChild(node));
   Array.from(container.querySelectorAll("*"))
     .reverse()
     .forEach((element) => sanitizeElement(element));
