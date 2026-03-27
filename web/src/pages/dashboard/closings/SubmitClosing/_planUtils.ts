@@ -42,11 +42,6 @@ export const normalizeOptions = (
 ): Array<{ label: string; fycRate: string }> =>
   Array.isArray(options) ? options : [];
 
-export const parseOptionRate = (value: string) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : -Infinity;
-};
-
 export const getOptionEntries = (
   product?: {
     options?: Array<{ label: string; fycRate: string }>;
@@ -54,13 +49,10 @@ export const getOptionEntries = (
 ) => {
   const safeOptions = normalizeOptions(product?.options);
   if (safeOptions.length === 0) return [];
-  return [...safeOptions]
-    .map((option) => ({ value: option.label, rate: option.fycRate }))
-    .sort(
-      (left, right) =>
-        parseOptionRate(right.rate) - parseOptionRate(left.rate) ||
-        left.value.localeCompare(right.value),
-    );
+  return safeOptions.map((option) => ({
+    value: option.label,
+    rate: option.fycRate,
+  }));
 };
 
 export const cloneDraftProduct = (product: DraftProduct): DraftProduct => ({

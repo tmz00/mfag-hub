@@ -5,6 +5,7 @@ import { Button } from "./Button";
 import { VsSave } from "solid-icons/vs";
 import { ConfirmModal } from "./ConfirmModal";
 import { PageHeader } from "./PageHeader";
+import type { PageHeaderVariant } from "./PageHeader";
 import { createScrollLock } from "./createScrollLock";
 import { Spinner } from "./Spinner";
 
@@ -40,6 +41,26 @@ type EditModalProps = {
   manageHistoryEntry?: boolean;
   /** Hide back button in the header */
   hideBackButton?: boolean;
+  /** Override the status-bar theme color used while the modal is open */
+  themeColorVariant?: PageHeaderVariant;
+};
+
+export const resolveEditModalThemeColorVariant = (
+  explicitVariant?: PageHeaderVariant,
+  pathname?: string,
+): PageHeaderVariant => {
+  if (explicitVariant) return explicitVariant;
+
+  const currentPathname =
+    pathname ?? (typeof window === "undefined" ? "" : window.location.pathname);
+  const normalizedPathname =
+    currentPathname.length > 1 ? currentPathname.replace(/\/+$/, "") : currentPathname || "/";
+  const isAdminRoute =
+    normalizedPathname === "/admin" ||
+    normalizedPathname.startsWith("/admin/") ||
+    normalizedPathname === "/report-templates";
+
+  return isAdminRoute ? "admin" : "plain";
 };
 
 export const EditModal: Component<EditModalProps> = (props) => {
@@ -51,6 +72,8 @@ export const EditModal: Component<EditModalProps> = (props) => {
   const saveVariant = () => props.saveVariant || "admin";
   const savingLabel = () => props.savingLabel || "Saving...";
   const saving = () => (props.saving ? props.saving() : false);
+  const themeColorVariant = () =>
+    resolveEditModalThemeColorVariant(props.themeColorVariant);
   const discardPrompt = () =>
     props.discardPrompt || "You have unsaved changes that will be lost.";
 
@@ -214,6 +237,7 @@ export const EditModal: Component<EditModalProps> = (props) => {
       <div ref={headerRef}>
         <PageHeader
           variant="plain"
+          themeColorVariant={themeColorVariant()}
           onBack={props.hideBackButton ? undefined : handleClose}
           icon={props.headerIcon}
           title={props.headerTitle}

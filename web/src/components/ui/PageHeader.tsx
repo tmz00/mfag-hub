@@ -2,6 +2,8 @@ import { TbOutlineArrowLeft } from "solid-icons/tb";
 import type { Component, JSX } from "solid-js";
 import { Show, onMount, onCleanup } from "solid-js";
 
+export type PageHeaderVariant = "default" | "admin" | "dashboard" | "plain";
+
 type PageHeaderProps = {
   title?: JSX.Element | string;
   subtitle?: string;
@@ -11,7 +13,8 @@ type PageHeaderProps = {
   backLabel?: string;
   /** Back handler */
   onBack?: () => void;
-  variant?: "default" | "admin" | "dashboard" | "plain";
+  variant?: PageHeaderVariant;
+  themeColorVariant?: PageHeaderVariant;
   gradient?: string;
   paddingClass?: string;
   maxWidthClass?: string;
@@ -19,7 +22,7 @@ type PageHeaderProps = {
 };
 
 // CSS variable names for theme colors (matching gradient start colors)
-const THEME_COLOR_VARS: Record<string, string> = {
+const THEME_COLOR_VARS: Record<PageHeaderVariant, string> = {
   default: "--color-primary-500",
   admin: "--color-admin-from",
   dashboard: "--color-primary-100",
@@ -38,15 +41,17 @@ const getCssColor = (varName: string, fallback: string): string => {
 
 export const PageHeader: Component<PageHeaderProps> = (props) => {
   let rootRef: HTMLDivElement | undefined;
+  let previousThemeColor: string | null = null;
 
   // Update iOS/iPad status bar theme color
   onMount(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
-    const variant = props.variant || "default";
+    const variant = props.themeColorVariant || props.variant || "default";
     const colorVar = THEME_COLOR_VARS[variant] || DEFAULT_THEME_COLOR_VAR;
     const themeColor = getCssColor(colorVar, "#178e9e");
 
     if (meta) {
+      previousThemeColor = meta.getAttribute("content");
       meta.setAttribute("content", themeColor);
     }
   });
@@ -54,8 +59,9 @@ export const PageHeader: Component<PageHeaderProps> = (props) => {
   onCleanup(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      const defaultColor = getCssColor(DEFAULT_THEME_COLOR_VAR, "#178e9e");
-      meta.setAttribute("content", defaultColor);
+      const restoredColor =
+        previousThemeColor?.trim() || getCssColor(DEFAULT_THEME_COLOR_VAR, "#178e9e");
+      meta.setAttribute("content", restoredColor);
     }
   });
 

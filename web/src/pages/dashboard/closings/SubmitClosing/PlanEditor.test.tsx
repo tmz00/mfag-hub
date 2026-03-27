@@ -193,4 +193,62 @@ describe("PlanEditor", () => {
     const premiumInput = screen.getByDisplayValue("550.50") as HTMLInputElement;
     expect(premiumInput.value).toBe("550.50");
   });
+
+  it("preserves catalog option order in the entry age dropdown", async () => {
+    clearSavedState();
+    setEditPlan({
+      product: {
+        id: "plan-1",
+        isRider: false,
+        productId: "PLAN-1",
+        fullName: "Starter Plan",
+        shortName: "Starter",
+        type: "regular",
+        optionTitle: "Entry Age",
+        options: [
+          { label: "61-70", fycRate: "10" },
+          { label: "0-60", fycRate: "30" },
+          { label: "71-75", fycRate: "20" },
+        ],
+        fycRate: 12,
+        gst: false,
+        premiumRows: [
+          {
+            id: "row-1",
+            premium: 100,
+            frequency: "Annual",
+            quantity: 1,
+          },
+        ],
+        riders: [],
+      },
+      index: null,
+      isAddon: false,
+    });
+
+    const { container } = render(() => <PlanEditor />);
+
+    await waitFor(() => {
+      const select = Array.from(container.querySelectorAll("select")).find(
+        (element) =>
+          Array.from(element.options).some(
+            (option) => option.text === "Select an option...",
+          ),
+      );
+      expect(select).toBeTruthy();
+    });
+
+    const optionSelect = Array.from(container.querySelectorAll("select")).find(
+      (element) =>
+        Array.from(element.options).some(
+          (option) => option.text === "Select an option...",
+        ),
+    ) as HTMLSelectElement;
+
+    expect(
+      Array.from(optionSelect.options)
+        .slice(1)
+        .map((option) => option.value),
+    ).toEqual(["61-70", "0-60", "71-75"]);
+  });
 });
