@@ -4,7 +4,7 @@ This repository is a monorepo for MFAG Hub. The frontend lives in `web`: a Solid
 
 This README is still intentionally frontend-focused. The PHP Laravel API backend lives in `api`, and any backend behavior referenced here is described only where it affects frontend integration.
 
-This repository root is the `apps/` directory. Unless noted otherwise, paths below are relative to this root.
+This directory is the repository root. Unless noted otherwise, paths below are relative to this root.
 
 The current production deployment serves the SPA from `https://hub.mfag.sg/` and mounts the Laravel backend under the same origin at `/api`, so browser API requests resolve to `https://hub.mfag.sg/api/...`.
 
@@ -52,7 +52,7 @@ The repo is split into two main apps.
 npm --prefix web install
 ```
 
-Root-level shortcuts from `apps/`:
+Root-level shortcuts from the repository root:
 
 - `npm run dev:web`
 - `npm run build:web`

@@ -2,7 +2,7 @@
 
 This directory contains the PHP Laravel backend that powers MFAG Hub on MySQL, including auth, business APIs, and operational backup tooling.
 
-This repository root is `apps/`. Commands in this README are written either from that root (for example `cd api`) or from inside `api/` where shown.
+The repository root is the parent directory of this folder. Commands in this README are written either from that repo root (for example `cd api`) or from inside `api/` where shown.
 
 ## Route prefixes and public mounting
 
@@ -187,7 +187,7 @@ Import uploaded files:
 ./scripts/import-uploaded-files.sh /path/to/uploaded-files.tar.gz --yes
 ```
 
-If you are testing uploaded-file imports through the web UI in local development, start the API with `./scripts/serve-dev.sh` (or `npm run dev:api` from `apps/`). The default CLI PHP limits are typically too small for full backup archives and can fail with a 500 before the controller runs.
+If you are testing uploaded-file imports through the web UI in local development, start the API with `./scripts/serve-dev.sh` (or `npm run dev:api` from the repository root). The default CLI PHP limits are typically too small for full backup archives and can fail with a 500 before the controller runs.
 
 Database snapshots created by the scheduler are stored under `storage/backups/snapshot-<timestamp>`.
 
