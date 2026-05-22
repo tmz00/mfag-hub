@@ -217,7 +217,6 @@ class ReportTemplateStore
                 'indexTableWidth' => $this->intValue($report['indexTableWidth'] ?? null, 46, 0, 1000),
                 'includeIndexTable' => $this->boolValue($report['includeIndexTable'] ?? null, true),
                 'layoutMode' => $layoutMode,
-                'agencyTableGap' => $this->intValue($report['agencyTableGap'] ?? null, 30, 0, 500),
                 'tables' => $this->normalizeTables(
                     is_array($report['tables'] ?? null) ? $report['tables'] : [],
                     $usedTableIds,
@@ -228,6 +227,10 @@ class ReportTemplateStore
 
             if ($layoutMode === 'combinedFsc') {
                 $normalizedReport['singleTable'] = true;
+            }
+            $agencyTableGap = $this->intValue($report['agencyTableGap'] ?? null, 30, 0, 500);
+            if ($agencyTableGap !== 30) {
+                $normalizedReport['agencyTableGap'] = $agencyTableGap;
             }
             $primaryColumnHeader = $this->stringValue($report['primaryColumnHeader'] ?? null, 80);
             if ($primaryColumnHeader !== '') {
