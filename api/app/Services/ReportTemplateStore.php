@@ -16,6 +16,7 @@ class ReportTemplateStore
 
     private const ALLOWED_VALUE_FORMATS = ['currency', 'count', 'number'];
     private const ALLOWED_ROOKIE_FILTERS = ['rookies', 'nonRookies', 'all'];
+    private const ALLOWED_LAYOUT_MODES = ['separateLeaderboards', 'combinedFsc', 'agencySummary'];
     private const ALLOWED_METRIC_TYPES = [
         'fyc',
         'afyc',
@@ -39,8 +40,13 @@ class ReportTemplateStore
                 'table_gap',
                 'table_width',
                 'index_table_width',
+                'primary_column_header',
+                'primary_column_width',
                 'include_index_table',
                 'single_table',
+                'layout_mode',
+                'agency_breakdown',
+                'agency_table_gap',
                 'bottom_footnote',
             ]);
 
@@ -66,7 +72,9 @@ class ReportTemplateStore
                     'show_index',
                     'include_footer_total_row',
                     'include_all_agencies',
+                    'include_all_non_legacy_agencies',
                     'agency_codes',
+                    'agency_breakdown',
                     'include_all_advisors',
                     'rookie_filter',
                     'rookie_years',
@@ -121,8 +129,31 @@ class ReportTemplateStore
                     'tables' => $tablesByReportId[$reportId] ?? [],
                 ];
 
-                if ((bool) ($row->single_table ?? false)) {
+                $layoutMode = $this->enumValue(
+                    $row->layout_mode ?? null,
+                    self::ALLOWED_LAYOUT_MODES,
+                    ((bool) ($row->single_table ?? false)) ? 'combinedFsc' : 'separateLeaderboards'
+                );
+                if ($layoutMode !== 'separateLeaderboards') {
+                    $report['layoutMode'] = $layoutMode;
+                    $report['singleTable'] = $layoutMode === 'combinedFsc';
+                } elseif ((bool) ($row->single_table ?? false)) {
                     $report['singleTable'] = true;
+                }
+                $primaryColumnHeader = trim((string) ($row->primary_column_header ?? ''));
+                if ($primaryColumnHeader !== '') {
+                    $report['primaryColumnHeader'] = $primaryColumnHeader;
+                }
+                $primaryColumnWidth = (int) ($row->primary_column_width ?? 120);
+                if ($primaryColumnWidth !== 120) {
+                    $report['primaryColumnWidth'] = $primaryColumnWidth;
+                }
+                if ((bool) ($row->agency_breakdown ?? false)) {
+                    $report['agencyBreakdown'] = true;
+                }
+                $agencyTableGap = (int) ($row->agency_table_gap ?? 30);
+                if ($agencyTableGap !== 30) {
+                    $report['agencyTableGap'] = $agencyTableGap;
                 }
 
                 $bottomFootnote = trim((string) ($row->bottom_footnote ?? ''));
@@ -168,7 +199,14 @@ class ReportTemplateStore
                 self::FILENAME_TEMPLATE_MAX
             );
 
-            $isSingleTable = $this->boolValue($report['singleTable'] ?? null, false);
+            $layoutMode = $this->enumValue(
+                $report['layoutMode'] ?? null,
+                self::ALLOWED_LAYOUT_MODES,
+                $this->boolValue($report['singleTable'] ?? null, false)
+                    ? 'combinedFsc'
+                    : 'separateLeaderboards'
+            );
+            $isSingleTable = $layoutMode === 'combinedFsc';
 
             $normalizedReport = [
                 'id' => $id,
@@ -178,6 +216,8 @@ class ReportTemplateStore
                 'tableWidth' => $this->intValue($report['tableWidth'] ?? null, 170, 1, 1000),
                 'indexTableWidth' => $this->intValue($report['indexTableWidth'] ?? null, 46, 0, 1000),
                 'includeIndexTable' => $this->boolValue($report['includeIndexTable'] ?? null, true),
+                'layoutMode' => $layoutMode,
+                'agencyTableGap' => $this->intValue($report['agencyTableGap'] ?? null, 30, 0, 500),
                 'tables' => $this->normalizeTables(
                     is_array($report['tables'] ?? null) ? $report['tables'] : [],
                     $usedTableIds,
@@ -186,8 +226,19 @@ class ReportTemplateStore
                 ),
             ];
 
-            if ($isSingleTable) {
+            if ($layoutMode === 'combinedFsc') {
                 $normalizedReport['singleTable'] = true;
+            }
+            $primaryColumnHeader = $this->stringValue($report['primaryColumnHeader'] ?? null, 80);
+            if ($primaryColumnHeader !== '') {
+                $normalizedReport['primaryColumnHeader'] = $primaryColumnHeader;
+            }
+            $primaryColumnWidth = $this->intValue($report['primaryColumnWidth'] ?? null, 120, 40, 1000);
+            if ($primaryColumnWidth !== 120) {
+                $normalizedReport['primaryColumnWidth'] = $primaryColumnWidth;
+            }
+            if ($this->boolValue($report['agencyBreakdown'] ?? null, false)) {
+                $normalizedReport['agencyBreakdown'] = true;
             }
 
             $bottomFootnote = $this->nullableString($report['bottomFootnote'] ?? null, self::FOOTNOTE_MAX);
@@ -221,8 +272,13 @@ class ReportTemplateStore
                     'table_gap' => $report['tableGap'],
                     'table_width' => $report['tableWidth'],
                     'index_table_width' => $report['indexTableWidth'],
+                    'primary_column_header' => $report['primaryColumnHeader'] ?? null,
+                    'primary_column_width' => $report['primaryColumnWidth'] ?? 120,
                     'include_index_table' => $report['includeIndexTable'],
                     'single_table' => ($report['singleTable'] ?? false) === true,
+                    'layout_mode' => $report['layoutMode'] ?? 'separateLeaderboards',
+                    'agency_breakdown' => ($report['agencyBreakdown'] ?? false) === true,
+                    'agency_table_gap' => $report['agencyTableGap'] ?? 30,
                     'bottom_footnote' => $report['bottomFootnote'] ?? null,
                     'position' => $reportIndex,
                     'is_deleted' => false,
@@ -252,7 +308,9 @@ class ReportTemplateStore
                     'show_index' => $table['showIndex'],
                     'include_footer_total_row' => ($table['includeFooterTotalRow'] ?? false) === true,
                     'include_all_agencies' => $table['includeAllAgencies'],
+                    'include_all_non_legacy_agencies' => $table['includeAllNonLegacyAgencies'] ?? false,
                     'agency_codes' => $this->encodeJson($table['agencyCodes'] ?? []),
+                    'agency_breakdown' => ($table['agencyBreakdown'] ?? false) === true,
                     'include_all_advisors' => $table['includeAllAdvisors'],
                     'rookie_filter' => $table['rookieFilter'],
                     'rookie_years' => $table['rookieYears'],
@@ -365,6 +423,10 @@ class ReportTemplateStore
                 is_array($table['metric'] ?? null) ? $table['metric'] : []
             );
 
+            $includeAllAgencies = $this->boolValue($table['includeAllAgencies'] ?? null, true);
+            $includeAllNonLegacyAgencies = !$includeAllAgencies
+                && $this->boolValue($table['includeAllNonLegacyAgencies'] ?? null, false);
+
             $normalizedTable = [
                 'id' => $id,
                 'titleLines' => $titleLines,
@@ -373,7 +435,7 @@ class ReportTemplateStore
                     : $this->fallbackString($table['valueLabel'] ?? null, 'Value', self::VALUE_LABEL_MAX),
                 'highlightMin' => $this->boolValue($table['highlightMin'] ?? null, false),
                 'showIndex' => $this->boolValue($table['showIndex'] ?? null, false),
-                'includeAllAgencies' => $this->boolValue($table['includeAllAgencies'] ?? null, true),
+                'includeAllAgencies' => $includeAllAgencies,
                 'includeAllAdvisors' => $this->boolValue($table['includeAllAdvisors'] ?? null, true),
                 'rookieFilter' => $this->enumValue(
                     $table['rookieFilter'] ?? null,
@@ -388,6 +450,10 @@ class ReportTemplateStore
                 $normalizedTable['valueFormat'] = $valueFormat;
             }
 
+            if ($includeAllNonLegacyAgencies) {
+                $normalizedTable['includeAllNonLegacyAgencies'] = true;
+            }
+
             $minValue = $this->decimalValue($table['minValue'] ?? null);
             if ($minValue !== null) {
                 $normalizedTable['minValue'] = $minValue;
@@ -395,6 +461,10 @@ class ReportTemplateStore
 
             if ($agencyCodes !== []) {
                 $normalizedTable['agencyCodes'] = $agencyCodes;
+            }
+
+            if ($this->boolValue($table['agencyBreakdown'] ?? null, false)) {
+                $normalizedTable['agencyBreakdown'] = true;
             }
 
             if ($sources !== []) {
@@ -477,6 +547,10 @@ class ReportTemplateStore
             $table['includeFooterTotalRow'] = true;
         }
 
+        if ((bool) ($row->include_all_non_legacy_agencies ?? false)) {
+            $table['includeAllNonLegacyAgencies'] = true;
+        }
+
         $valueFormat = $this->enumValue(
             $row->value_format ?? null,
             self::ALLOWED_VALUE_FORMATS,
@@ -493,6 +567,10 @@ class ReportTemplateStore
         $agencyCodes = $this->decodeStringList($row->agency_codes ?? null, 50, true, 100);
         if ($agencyCodes !== []) {
             $table['agencyCodes'] = $agencyCodes;
+        }
+
+        if ((bool) ($row->agency_breakdown ?? false)) {
+            $table['agencyBreakdown'] = true;
         }
 
         $sources = $this->decodeStringList($row->source_ids ?? null, 50, true, 50);

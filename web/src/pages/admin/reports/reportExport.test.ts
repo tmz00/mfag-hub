@@ -99,8 +99,61 @@ describe("reportExport", () => {
 
     expect(tableTitleCall?.[2]).toBe(224);
     expect(rookieFootnoteCall?.[2]).toBe(320);
-    expect(bottomFootnoteCall?.[1]).toBe(130);
+    expect(bottomFootnoteCall?.[1]).toBe(204);
     expect(bottomFootnoteCall?.[2]).toBe(358);
+  });
+
+  it("includes the FSC/Agency column width in separate table width", () => {
+    const tables: RenderTable[] = [
+      {
+        id: 61,
+        titleLines: ["TOP"],
+        valueLabel: "FYC ($)",
+        showIndex: false,
+        rows: [{ name: "Alice", value: 100 }],
+      },
+    ];
+
+    const narrow = buildReportCanvas({
+      report: {
+        id: 62,
+        title: "Narrow",
+        filenameTemplate: "{YYYYMMDD}_Narrow",
+        tableGap: 12,
+        tableWidth: 180,
+        indexTableWidth: 46,
+        includeIndexTable: false,
+        primaryColumnWidth: 80,
+        bottomFootnote: "",
+        tables: [],
+      },
+      reportDate: new Date("2026-02-15T00:00:00.000Z"),
+      tables,
+      maxRows: 1,
+      reportRangeLabel: "01 Feb 2026 - 15 Feb 2026",
+      logo: null,
+    });
+    const wide = buildReportCanvas({
+      report: {
+        id: 63,
+        title: "Wide",
+        filenameTemplate: "{YYYYMMDD}_Wide",
+        tableGap: 12,
+        tableWidth: 180,
+        indexTableWidth: 46,
+        includeIndexTable: false,
+        primaryColumnWidth: 160,
+        bottomFootnote: "",
+        tables: [],
+      },
+      reportDate: new Date("2026-02-15T00:00:00.000Z"),
+      tables,
+      maxRows: 1,
+      reportRangeLabel: "01 Feb 2026 - 15 Feb 2026",
+      logo: null,
+    });
+
+    expect((wide?.width ?? 0) - (narrow?.width ?? 0)).toBe(80);
   });
 
   it("preserves half-case values for count metrics", () => {
@@ -215,7 +268,7 @@ describe("reportExport", () => {
     expect(drawText).toContain("(SECOND LINE)");
     expect(drawText).not.toContain("SECOND LINE");
     expect(drawText.filter((text) => text === "")).toHaveLength(0);
-    expect(secondLineCall?.[3]).toBe('600 12px "Aptos Narrow", sans-serif');
+    expect(secondLineCall?.[3]).toBe('900 12px "Barlow", sans-serif');
   });
 
   it("renders single-table title lines with the same formatting rules as standard tables", () => {
@@ -255,8 +308,8 @@ describe("reportExport", () => {
     const drawText = fillTextMock.mock.calls.map((call) => call[0]);
 
     expect(drawText).not.toContain("(THIRD LINE)");
-    expect(secondLineCall?.[3]).toBe('600 12px "Aptos Narrow", sans-serif');
-    expect(thirdLineCall?.[3]).toBe('italic 600 12px "Aptos Narrow", sans-serif');
+    expect(secondLineCall?.[3]).toBe('900 12px "Barlow", sans-serif');
+    expect(thirdLineCall?.[3]).toBe('italic 900 12px "Barlow", sans-serif');
   });
 
   it("wraps long text in single-table title rows", () => {
@@ -277,8 +330,8 @@ describe("reportExport", () => {
       tables: [
         {
           id: 35,
-          titleLines: ["TOP", "ONE TWO THREE FOUR FIVE SIX SEVEN"],
-          valueLabel: "ALPHA BETA GAMMA DELTA EPSILON",
+          titleLines: ["TOP", "ONE TWO THREE FOUR FIVE SIX SEVEN EIGHT NINE"],
+          valueLabel: "ALPHA BETA GAMMA DELTA EPSILON ZETA ETA THETA",
           rows: [{ key: "a", name: "Alex", value: 1 }],
         },
       ],
@@ -289,15 +342,15 @@ describe("reportExport", () => {
 
     const drawText = fillTextMock.mock.calls.map((call) => call[0]);
 
-    expect(drawText).toContain("ALPHA BETA GAMMA DELTA");
-    expect(drawText).toContain("EPSILON");
-    expect(drawText).toContain("ONE TWO THREE FOUR FIVE SIX");
-    expect(drawText).toContain("SEVEN");
-    expect(drawText).not.toContain("ALPHA BETA GAMMA DELTA EPSILON");
-    expect(drawText).not.toContain("ONE TWO THREE FOUR FIVE SIX SEVEN");
+    expect(drawText).toContain("ALPHA BETA GAMMA DELTA EPSILON ZETA ETA");
+    expect(drawText).toContain("THETA");
+    expect(drawText.some((text) => text.startsWith("ONE TWO"))).toBe(true);
+    expect(drawText.some((text) => text.includes("NINE"))).toBe(true);
+    expect(drawText).not.toContain("ALPHA BETA GAMMA DELTA EPSILON ZETA ETA THETA");
+    expect(drawText).not.toContain("ONE TWO THREE FOUR FIVE SIX SEVEN EIGHT NINE");
   });
 
-  it("keeps the single-table top header row visible when headers are blank", () => {
+  it("omits the single-table top header row when all column headers are blank", () => {
     const withHeader = buildReportCanvas({
       report: {
         id: 36,
@@ -352,7 +405,7 @@ describe("reportExport", () => {
       logo: null,
     });
 
-    expect(withoutHeader?.height).toBe(withHeader?.height);
+    expect(withoutHeader?.height).toBeLessThan(withHeader?.height ?? 0);
   });
 
   it("renders a footer total row when enabled", () => {
@@ -581,7 +634,7 @@ describe("reportExport", () => {
     expect(bottomFootnoteCall?.[2]).toBe(374);
   });
 
-  it("renders a single-table layout with FSC and column headers", () => {
+  it("renders a single-table layout with name and column headers", () => {
     buildReportCanvas({
       report: {
         id: 8,
@@ -624,7 +677,7 @@ describe("reportExport", () => {
     });
 
     const drawText = fillTextMock.mock.calls.map((call) => call[0]);
-    expect(drawText).toContain("FSC");
+    expect(drawText).toContain("Name");
     expect(drawText).toContain("AFYP");
     expect(drawText).toContain("AFYP ($)");
     expect(drawText).toContain("Cases");

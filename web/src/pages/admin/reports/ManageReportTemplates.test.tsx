@@ -302,12 +302,24 @@ describe("ManageReportTemplates admin page", () => {
     expect(screen.getByText("TOP ROOKIE")).toBeTruthy();
     expect(screen.getByLabelText("Index Column Width (px)")).toBeTruthy();
     expect(
-      (screen.getByLabelText("Single Table") as HTMLInputElement).checked,
-    ).toBe(false);
+      (screen.getByLabelText("Report Layout") as HTMLSelectElement).value,
+    ).toBe("separateLeaderboards");
+    expect(
+      screen
+        .getByLabelText("Filename Template")
+        .compareDocumentPosition(screen.getByLabelText("Report Layout")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     const includeIndexColumnCheckbox = screen.getByLabelText(
       "Include Index Column",
     ) as HTMLInputElement;
+    expect(
+      screen
+        .getByLabelText("Report Layout")
+        .compareDocumentPosition(includeIndexColumnCheckbox) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.click(includeIndexColumnCheckbox);
     expect(screen.queryByLabelText("Index Column Width (px)")).toBeNull();
     fireEvent.click(includeIndexColumnCheckbox);
@@ -368,10 +380,10 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByText("Edit Report Template")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByTitle("Edit table"));
+    fireEvent.click(screen.getByTitle("Edit leaderboard"));
 
     await waitFor(() => {
-      expect(screen.getByText("Edit Table")).toBeTruthy();
+      expect(screen.getByText("Edit Leaderboard")).toBeTruthy();
     });
 
     const includeFooterTotalRowCheckbox = screen.getByLabelText(
@@ -380,10 +392,10 @@ describe("ManageReportTemplates admin page", () => {
     expect(includeFooterTotalRowCheckbox.checked).toBe(false);
 
     fireEvent.click(includeFooterTotalRowCheckbox);
-    fireEvent.click(screen.getByRole("button", { name: "Save Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Leaderboard" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("Edit Table")).toBeNull();
+      expect(screen.queryByText("Edit Leaderboard")).toBeNull();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -416,12 +428,14 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByLabelText("Single Table"));
+    fireEvent.change(screen.getByLabelText("Report Layout"), {
+      target: { value: "combinedFsc" },
+    });
 
-    expect(screen.getByText("Columns")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add Column" })).toBeTruthy();
-    expect(screen.getByLabelText("Column Group Gap (px)")).toBeTruthy();
-    expect(screen.queryByLabelText("Table Gap (px)")).toBeNull();
+    expect(screen.getByText("Metric Columns")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add Metric Column" })).toBeTruthy();
+    expect(screen.getByLabelText("Metric Column Gap (px)")).toBeTruthy();
+    expect(screen.queryByLabelText("Leaderboard Gap (px)")).toBeNull();
   });
 
   it("labels value label as header for single-table columns", async () => {
@@ -439,10 +453,12 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByLabelText("Single Table"));
-    fireEvent.click(screen.getByRole("button", { name: "Add Column" }));
+    fireEvent.change(screen.getByLabelText("Report Layout"), {
+      target: { value: "combinedFsc" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Metric Column" }));
 
-    expect(screen.getByLabelText("Header")).toBeTruthy();
+    expect(screen.getByLabelText("Column Header")).toBeTruthy();
     expect(screen.queryByLabelText("Value Label")).toBeNull();
   });
 
@@ -534,10 +550,10 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByText("Edit Report Template")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByTitle("Edit table"));
+    fireEvent.click(screen.getByTitle("Edit leaderboard"));
 
     await waitFor(() => {
-      expect(screen.getByText("Edit Table")).toBeTruthy();
+      expect(screen.getByText("Edit Leaderboard")).toBeTruthy();
     });
 
     const valueLabelInput = screen.getByLabelText("Value Label") as HTMLInputElement;
@@ -594,7 +610,7 @@ describe("ManageReportTemplates admin page", () => {
     });
 
     const tableLabel = screen.getByText("TOP TABLE");
-    const addTableButton = screen.getByRole("button", { name: "Add Table" });
+    const addTableButton = screen.getByRole("button", { name: "Add Leaderboard" });
     const bottomFootnoteLabel = screen.getByText("Bottom Footnote");
 
     expect(
@@ -622,7 +638,7 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Leaderboard" }));
 
     const titleLinesInput = screen.getByLabelText(
       "Title Lines (one per line)",
@@ -653,6 +669,7 @@ describe("ManageReportTemplates admin page", () => {
     ) as HTMLInputElement;
     const includeAllAdvisorsLabel = screen.getByText("Include all advisors");
     const includeAllAgenciesLabel = screen.getByText("Include all agencies");
+    expect(screen.getByText("Include all non-legacy agencies")).toBeTruthy();
     const rookiesCheckbox = screen.getByLabelText("Rookies") as HTMLInputElement;
     const nonRookiesCheckbox = screen.getByLabelText(
       "Non-rookies",
@@ -695,7 +712,7 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Leaderboard" }));
 
     const titleLinesInput = screen.getByLabelText(
       "Title Lines (one per line)",
@@ -738,7 +755,7 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Leaderboard" }));
 
     await waitFor(() => {
       expect(screen.getByText("All sources and items")).toBeTruthy();
@@ -782,7 +799,7 @@ describe("ManageReportTemplates admin page", () => {
     expect(databaseItemOneCheckbox.checked).toBe(false);
 
     const addTableButtons = screen.getAllByRole("button", {
-      name: "Add Table",
+      name: "Add Leaderboard",
     });
     fireEvent.click(addTableButtons[addTableButtons.length - 1]!);
 
@@ -839,7 +856,7 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Leaderboard" }));
     fireEvent.click(screen.getByRole("button", { name: "Open Source Picker" }));
 
     await waitFor(() => {
@@ -875,24 +892,36 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Leaderboard" }));
 
     const includeAllAgenciesCheckbox = screen.getByLabelText(
       "Include all agencies",
     ) as HTMLInputElement;
+    const includeAllNonLegacyAgenciesCheckbox = screen.getByLabelText(
+      "Include all non-legacy agencies",
+    ) as HTMLInputElement;
     const agencyCheckbox = screen.getByLabelText(/AG01/) as HTMLInputElement;
     const legacyAgencyCheckbox = screen.getByLabelText(/OLD1/) as HTMLInputElement;
     expect(includeAllAgenciesCheckbox.checked).toBe(true);
+    expect(includeAllNonLegacyAgenciesCheckbox.checked).toBe(false);
     expect(agencyCheckbox.checked).toBe(true);
     expect(legacyAgencyCheckbox.checked).toBe(true);
     expect(agencyCheckbox.disabled).toBe(false);
     expect(screen.getByText("OLD1 — Legacy Agency (legacy)")).toBeTruthy();
 
+    fireEvent.click(includeAllNonLegacyAgenciesCheckbox);
+
+    expect(includeAllAgenciesCheckbox.checked).toBe(false);
+    expect(includeAllNonLegacyAgenciesCheckbox.checked).toBe(true);
+    expect(agencyCheckbox.checked).toBe(true);
+    expect(legacyAgencyCheckbox.checked).toBe(false);
+
     fireEvent.click(agencyCheckbox);
 
     expect(includeAllAgenciesCheckbox.checked).toBe(false);
+    expect(includeAllNonLegacyAgenciesCheckbox.checked).toBe(false);
     expect(agencyCheckbox.checked).toBe(false);
-    expect(legacyAgencyCheckbox.checked).toBe(true);
+    expect(legacyAgencyCheckbox.checked).toBe(false);
   });
 
   it("shows selected legacy product types in the table editor", async () => {
@@ -925,10 +954,10 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByText("Edit Report Template")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByTitle("Edit table"));
+    fireEvent.click(screen.getByTitle("Edit leaderboard"));
 
     await waitFor(() => {
-      expect(screen.getByText("Edit Table")).toBeTruthy();
+      expect(screen.getByText("Edit Leaderboard")).toBeTruthy();
     });
 
     expect(screen.getByLabelText("legacyType (legacy)")).toBeTruthy();
@@ -949,7 +978,7 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Leaderboard" }));
 
     const includeAllAgenciesCheckbox = screen.getByLabelText(
       "Include all agencies",
@@ -963,7 +992,7 @@ describe("ManageReportTemplates admin page", () => {
     ) as HTMLInputElement;
     const agencyCheckbox = screen.getByLabelText(/AG01/) as HTMLInputElement;
     const addTableButtons = screen.getAllByRole("button", {
-      name: "Add Table",
+      name: "Add Leaderboard",
     });
     const saveTableButton = addTableButtons[addTableButtons.length - 1] as HTMLButtonElement;
 
@@ -1009,7 +1038,7 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByLabelText("Title")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Table" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Leaderboard" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Metric Type")).toBeTruthy();
@@ -1061,14 +1090,14 @@ describe("ManageReportTemplates admin page", () => {
       expect(screen.getByText("Edit Report Template")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByTitle("Edit table"));
+    fireEvent.click(screen.getByTitle("Edit leaderboard"));
 
     await waitFor(() => {
-      expect(screen.getByText("Edit Table")).toBeTruthy();
+      expect(screen.getByText("Edit Leaderboard")).toBeTruthy();
     });
 
     expect(
-      (screen.getByRole("button", { name: "Save Table" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Save Leaderboard" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(

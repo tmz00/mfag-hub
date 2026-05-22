@@ -36,7 +36,7 @@ import {
   sourcesService,
 } from "../../../services/sourcesService";
 import { productsService } from "../../../services/productsService";
-import { teamService } from "../../../services/teamService";
+import { teamService, type TeamAgency } from "../../../services/teamService";
 import { adminOptionForPath } from "../adminOptions";
 import type { RenderTable, ReportRow } from "./reportExport";
 
@@ -119,18 +119,174 @@ const buildPreviewRows = (table: ReportTableLayout): ReportRow[] => {
   }));
 };
 
-const buildPreviewTables = (report: ReportTemplate): RenderTable[] => {
+const describeAgency = (agency: Pick<TeamAgency, "code" | "name">) => {
+  const code = (agency.code || "").trim();
+  const name = (agency.name || "").trim();
+  return name ? `${name} (${code})` : code;
+};
+
+const resolveTableAgencies = (
+  table: ReportTableLayout,
+  agencies: TeamAgency[],
+): TeamAgency[] => {
+  const selectedCodes =
+    table.includeAllAgencies
+      ? agencies.map((agency) => agency.code)
+      : table.includeAllNonLegacyAgencies
+        ? agencies
+            .filter((agency) => agency.isDeleted !== true && agency.isActive !== false)
+            .map((agency) => agency.code)
+        : !table.agencyCodes || table.agencyCodes.length === 0
+          ? agencies.map((agency) => agency.code)
+      : table.agencyCodes;
+  const byCode = new Map(
+    agencies
+      .map((agency) => [(agency.code || "").trim(), agency] as const)
+      .filter(([code]) => code !== ""),
+  );
+  const seen = new Set<string>();
+
+  return selectedCodes
+    .map((rawCode) => {
+      const code = String(rawCode || "").trim();
+      if (!code || seen.has(code)) return null;
+      seen.add(code);
+      return byCode.get(code) || { code, name: "" };
+    })
+    .filter((agency): agency is TeamAgency => agency !== null);
+};
+
+const applyAgencyBreakdownToTable = (
+  table: ReportTableLayout,
+  agency: TeamAgency,
+  index: number,
+  singleTable: boolean,
+): ReportTableLayout => {
+  const agencyLabel = describeAgency(agency);
+  const id = table.id * 1000 + index + 1;
+
+  if (singleTable) {
+    return {
+      ...table,
+      id,
+      agencyGroupLabel: agencyLabel,
+      includeAllAgencies: false,
+      agencyCodes: [agency.code],
+      agencyBreakdown: false,
+    };
+  }
+
+  return {
+    ...table,
+    id,
+    agencyGroupLabel: agencyLabel,
+    includeAllAgencies: false,
+    agencyCodes: [agency.code],
+    agencyBreakdown: false,
+  };
+};
+
+const getLayoutMode = (report: Pick<ReportTemplate, "layoutMode" | "singleTable">) =>
+  report.layoutMode || (report.singleTable ? "combinedFsc" : "separateLeaderboards");
+
+const isCombinedLayout = (report: Pick<ReportTemplate, "layoutMode" | "singleTable">) =>
+  getLayoutMode(report) === "combinedFsc";
+
+const isAgencySummaryLayout = (report: Pick<ReportTemplate, "layoutMode" | "singleTable">) =>
+  getLayoutMode(report) === "agencySummary";
+
+const reportItemLabel = (report: Pick<ReportTemplate, "layoutMode" | "singleTable">) =>
+  isAgencySummaryLayout(report)
+    ? "Agency Summary Tables"
+    : isCombinedLayout(report)
+      ? "Metric Columns"
+      : "Leaderboards";
+
+const reportItemSingularLabel = (report: Pick<ReportTemplate, "layoutMode" | "singleTable">) =>
+  isAgencySummaryLayout(report)
+    ? "Agency Summary Table"
+    : isCombinedLayout(report)
+      ? "Metric Column"
+      : "Leaderboard";
+
+const buildPreviewTables = (
+  report: ReportTemplate,
+  agencies: TeamAgency[] = [],
+): RenderTable[] => {
   if ((report.tables || []).length === 0) {
     return [];
   }
 
-  let tables: RenderTable[] = report.tables.map((table) => ({
+  if (isAgencySummaryLayout(report)) {
+    const selectedAgencies =
+      resolveTableAgencies(report.tables[0]!, agencies).length > 0
+        ? resolveTableAgencies(report.tables[0]!, agencies)
+        : agencies;
+    const fallbackAgencies = selectedAgencies.length > 0
+      ? selectedAgencies
+      : [
+          { code: "AG01", name: "Agency 01" },
+          { code: "AG02", name: "Agency 02" },
+          { code: "AG03", name: "Agency 03" },
+        ];
+    return report.tables.map((table) => ({
+      ...table,
+      rows: fallbackAgencies
+        .map((agency, index) => ({
+          key: agency.code,
+          name: describeAgency(agency),
+          value: previewValueForMetric(table.metric?.type || "countClosings", index),
+        }))
+        .sort((left, right) =>
+          right.value !== left.value
+            ? right.value - left.value
+            : left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+        ),
+    }));
+  }
+
+  const agencyBreakdownSource = report.agencyBreakdown
+    ? report.tables[0]
+    : report.tables.find(
+    (table) => table.agencyBreakdown === true,
+  );
+  const layoutTables = agencyBreakdownSource
+    ? resolveTableAgencies(agencyBreakdownSource, agencies).flatMap(
+        (agency, agencyIndex) =>
+          report.tables.map((table, tableIndex) =>
+            applyAgencyBreakdownToTable(
+              table,
+              agency,
+              agencyIndex * Math.max(1, report.tables.length) + tableIndex,
+              isCombinedLayout(report),
+            ),
+          ),
+      )
+    : report.tables.flatMap((table) => {
+    if (!table.agencyBreakdown) {
+      return [table];
+    }
+    const tableAgencies = resolveTableAgencies(table, agencies);
+    if (tableAgencies.length === 0) {
+      return [table];
+    }
+    return tableAgencies.map((agency, index) =>
+      applyAgencyBreakdownToTable(
+        table,
+        agency,
+        index,
+        isCombinedLayout(report),
+      ),
+    );
+  });
+
+  let tables: RenderTable[] = layoutTables.map((table) => ({
     ...table,
     rows: buildPreviewRows(table),
   }));
   const maxRows = Math.max(1, ...tables.map((table) => table.rows.length));
 
-  if (report.includeIndexTable && !report.singleTable) {
+  if (report.includeIndexTable && !isCombinedLayout(report)) {
     const indexRows = Array.from({ length: maxRows }, () => ({
       name: "",
       value: 0,
@@ -268,7 +424,7 @@ const ManageReports: Component = () => {
       releaseReportLogoAsset(logoAsset);
     }
     const reportDate = new Date();
-    const tables = buildPreviewTables(report);
+    const tables = buildPreviewTables(report, agencyOptions());
     if (tables.length === 0) {
       return null;
     }
@@ -408,9 +564,10 @@ const ManageReports: Component = () => {
         sources: source.sources || [],
         sourceItemIds: source.sourceItemIds || [],
         productTypeKeys: source.productTypeKeys || [],
-        includeProductKeywords: source.includeProductKeywords || "",
-        excludeProductKeywords: source.excludeProductKeywords || "",
-      }),
+    includeProductKeywords: source.includeProductKeywords || "",
+    excludeProductKeywords: source.excludeProductKeywords || "",
+    agencyBreakdown: source.agencyBreakdown === true,
+  }),
     ) as ReportTableLayout;
   };
 
@@ -422,8 +579,13 @@ const ManageReports: Component = () => {
       tableGap: 12,
       tableWidth: 180,
       indexTableWidth: 46,
+      primaryColumnHeader: "Name",
+      primaryColumnWidth: 120,
       includeIndexTable: true,
+      layoutMode: "separateLeaderboards",
       singleTable: false,
+      agencyBreakdown: false,
+      agencyTableGap: 30,
       bottomFootnote: "",
       tables: [createDefaultRookieTable()],
     };
@@ -537,7 +699,19 @@ const ManageReports: Component = () => {
   };
 
   const updateDraftReport = (patch: Partial<ReportTemplate>) => {
-    setDraftReport((prev) => (prev ? { ...prev, ...patch } : prev));
+    setDraftReport((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      if (patch.layoutMode) {
+        next.singleTable =
+          patch.layoutMode === "combinedFsc";
+        if (patch.layoutMode === "agencySummary") {
+          next.includeIndexTable = false;
+          next.agencyBreakdown = false;
+        }
+      }
+      return next;
+    });
   };
 
   const updateTableDraft = (patch: Partial<ReportTableLayout>) => {
@@ -552,9 +726,20 @@ const ManageReports: Component = () => {
     return options.every((agency) => selected.has(agency.code));
   };
 
+  const areAllNonLegacyAgenciesSelected = (table: ReportTableLayout) =>
+    table.includeAllNonLegacyAgencies === true;
+
+  const isLegacyAgency = (agency: TeamAgency) =>
+    agency.isDeleted === true || agency.isActive === false;
+
   const getSelectedAgencyCodes = (table: ReportTableLayout) => {
     if (table.includeAllAgencies ?? true) {
       return agencyOptions().map((agency) => agency.code);
+    }
+    if (table.includeAllNonLegacyAgencies === true) {
+      return agencyOptions()
+        .filter((agency) => !isLegacyAgency(agency))
+        .map((agency) => agency.code);
     }
 
     return table.agencyCodes || [];
@@ -563,6 +748,15 @@ const ManageReports: Component = () => {
   const setAllAgenciesSelected = (checked: boolean) => {
     updateTableDraft({
       includeAllAgencies: checked,
+      includeAllNonLegacyAgencies: false,
+      agencyCodes: [],
+    });
+  };
+
+  const setAllNonLegacyAgenciesSelected = (checked: boolean) => {
+    updateTableDraft({
+      includeAllAgencies: false,
+      includeAllNonLegacyAgencies: checked,
       agencyCodes: [],
     });
   };
@@ -590,12 +784,15 @@ const ManageReports: Component = () => {
 
     updateTableDraft({
       includeAllAgencies: false,
+      includeAllNonLegacyAgencies: false,
       agencyCodes: Array.from(next),
     });
   };
 
   const hasAnyAgencySelected = (table: ReportTableLayout) =>
-    areAllAgenciesSelected(table) || (table.agencyCodes || []).length > 0;
+    areAllAgenciesSelected(table) ||
+    areAllNonLegacyAgenciesSelected(table) ||
+    (table.agencyCodes || []).length > 0;
 
   const isAllSourcesSelected = (table: ReportTableLayout) =>
     (table.sources || []).length === 0 &&
@@ -1191,7 +1388,7 @@ const ManageReports: Component = () => {
                       </div>
                       <div class="text-sm text-gray-500">
                         {report.tables.length}{" "}
-                        {report.singleTable ? "columns" : "tables"}
+                        {isCombinedLayout(report) ? "metric columns" : "leaderboards"}
                       </div>
                     </div>
                     <div class="flex items-center gap-2">
@@ -1291,30 +1488,21 @@ const ManageReports: Component = () => {
                 />
               </label>
               <label class="text-sm font-semibold text-gray-700">
-                {draft().singleTable ? "Column Group Gap (px)" : "Table Gap (px)"}
-                <input
-                  type="number"
-                  value={draft().tableGap}
-                  onInput={(e) =>
+                Report Layout
+                <select
+                  value={getLayoutMode(draft())}
+                  onChange={(e) =>
                     updateDraftReport({
-                      tableGap: Number(e.currentTarget.value) || 0,
+                      layoutMode: e.currentTarget
+                        .value as ReportTemplate["layoutMode"],
                     })
                   }
                   class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
-                />
-              </label>
-              <label class="text-sm font-semibold text-gray-700">
-                Table Width (px)
-                <input
-                  type="number"
-                  value={draft().tableWidth}
-                  onInput={(e) =>
-                    updateDraftReport({
-                      tableWidth: Number(e.currentTarget.value) || 0,
-                    })
-                  }
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
-                />
+                >
+                  <option value="separateLeaderboards">Separate FSC leaderboards</option>
+                  <option value="combinedFsc">Combined FSC table</option>
+                  <option value="agencySummary">Agency summary table</option>
+                </select>
               </label>
               <label class="flex items-center gap-2 text-sm font-semibold text-gray-700">
                 <input
@@ -1328,18 +1516,89 @@ const ManageReports: Component = () => {
                 />
                 Include Index Column
               </label>
+              <label class="text-sm font-semibold text-gray-700">
+                {isCombinedLayout(draft()) ? "Metric Column Gap (px)" : "Leaderboard Gap (px)"}
+                <input
+                  type="number"
+                  value={draft().tableGap}
+                  onInput={(e) =>
+                    updateDraftReport({
+                      tableGap: Number(e.currentTarget.value) || 0,
+                    })
+                  }
+                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
+                />
+              </label>
+              <label class="text-sm font-semibold text-gray-700">
+                Metric Value Column Width (px)
+                <input
+                  type="number"
+                  value={draft().tableWidth}
+                  onInput={(e) =>
+                    updateDraftReport({
+                      tableWidth: Number(e.currentTarget.value) || 0,
+                    })
+                  }
+                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
+                />
+              </label>
+              <label class="text-sm font-semibold text-gray-700">
+                FSC/Agency Column Title
+                <input
+                  value={
+                    draft().primaryColumnHeader ||
+                    (isAgencySummaryLayout(draft()) ? "Agency" : "Name")
+                  }
+                  onInput={(e) =>
+                    updateDraftReport({
+                      primaryColumnHeader: e.currentTarget.value,
+                    })
+                  }
+                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
+                />
+              </label>
+              <label class="text-sm font-semibold text-gray-700">
+                FSC/Agency Column Width (px)
+                <input
+                  type="number"
+                  value={draft().primaryColumnWidth ?? 120}
+                  onInput={(e) =>
+                    updateDraftReport({
+                      primaryColumnWidth: Number(e.currentTarget.value) || 120,
+                    })
+                  }
+                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
+                />
+              </label>
+              <Show when={!isAgencySummaryLayout(draft())}>
               <label class="flex items-center gap-2 text-sm font-semibold text-gray-700">
                 <input
                   type="checkbox"
-                  checked={draft().singleTable === true}
+                  checked={draft().agencyBreakdown === true}
                   onChange={(e) =>
                     updateDraftReport({
-                      singleTable: e.currentTarget.checked,
+                      agencyBreakdown: e.currentTarget.checked,
                     })
                   }
                 />
-                Single Table
+                Separate report by agency
               </label>
+              </Show>
+              <Show when={draft().agencyBreakdown === true && !isAgencySummaryLayout(draft())}>
+                <label class="text-sm font-semibold text-gray-700">
+                  Agency Table Gap (px)
+                  <input
+                    type="number"
+                    value={draft().agencyTableGap ?? 30}
+                    onInput={(e) =>
+                      updateDraftReport({
+                        agencyTableGap: Number(e.currentTarget.value) || 0,
+                      })
+                    }
+                    class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
+                  />
+                </label>
+              </Show>
               <Show when={draft().includeIndexTable}>
                 <label class="text-sm font-semibold text-gray-700">
                   Index Column Width (px)
@@ -1351,7 +1610,7 @@ const ManageReports: Component = () => {
                         indexTableWidth: Number(e.currentTarget.value) || 0,
                       })
                     }
-                    class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-base"
+                    class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-base"
                   />
                 </label>
               </Show>
@@ -1360,7 +1619,7 @@ const ManageReports: Component = () => {
             <div class="mt-6">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <h4 class="text-base font-semibold text-gray-900">
-                  {draft().singleTable ? "Columns" : "Tables"}
+                  {reportItemLabel(draft())}
                 </h4>
               </div>
 
@@ -1391,8 +1650,8 @@ const ManageReports: Component = () => {
                           e.stopPropagation();
                           openEditTableEditor(table);
                         }}
-                        title={draft().singleTable ? "Edit column" : "Edit table"}
-                        aria-label={draft().singleTable ? "Edit column" : "Edit table"}
+                        title={`Edit ${reportItemSingularLabel(draft()).toLowerCase()}`}
+                        aria-label={`Edit ${reportItemSingularLabel(draft()).toLowerCase()}`}
                       >
                         <TbOutlinePencil class="h-4 w-4" />
                       </IconButton>
@@ -1405,10 +1664,10 @@ const ManageReports: Component = () => {
                         }}
                         class="border-red-500 text-red-600"
                         title={
-                          draft().singleTable ? "Delete column" : "Delete table"
+                          `Delete ${reportItemSingularLabel(draft()).toLowerCase()}`
                         }
                         aria-label={
-                          draft().singleTable ? "Delete column" : "Delete table"
+                          `Delete ${reportItemSingularLabel(draft()).toLowerCase()}`
                         }
                       >
                         <TbOutlineTrash class="h-4 w-4" />
@@ -1426,7 +1685,7 @@ const ManageReports: Component = () => {
                   onClick={openAddTableEditor}
                 >
                   <TbOutlinePlus class="h-4 w-4" />
-                  {draft().singleTable ? "Add Column" : "Add Table"}
+                  Add {reportItemSingularLabel(draft())}
                 </Button>
               </div>
 
@@ -1453,23 +1712,15 @@ const ManageReports: Component = () => {
           <EditModal
             title={
               isEditingTable()
-                ? draftReport()?.singleTable
-                  ? "Edit Column"
-                  : "Edit Table"
-                : draftReport()?.singleTable
-                  ? "Add Column"
-                  : "Add Table"
+                ? `Edit ${reportItemSingularLabel(draftReport() || { layoutMode: "separateLeaderboards" })}`
+                : `Add ${reportItemSingularLabel(draftReport() || { layoutMode: "separateLeaderboards" })}`
             }
             onClose={closeTableEditor}
             onSave={saveDraftTable}
             saveLabel={
               isEditingTable()
-                ? draftReport()?.singleTable
-                  ? "Save Column"
-                  : "Save Table"
-                : draftReport()?.singleTable
-                  ? "Add Column"
-                  : "Add Table"
+                ? `Save ${reportItemSingularLabel(draftReport() || { layoutMode: "separateLeaderboards" })}`
+                : `Add ${reportItemSingularLabel(draftReport() || { layoutMode: "separateLeaderboards" })}`
             }
             saveDisabled={
               tableValidationErrors().length > 0 ||
@@ -1510,7 +1761,7 @@ const ManageReports: Component = () => {
                 />
               </label>
               <label class="text-base font-semibold text-gray-700">
-                {draftReport()?.singleTable ? "Header" : "Value Label"}
+                {isCombinedLayout(draftReport() || { layoutMode: "separateLeaderboards" }) ? "Column Header" : "Value Label"}
                 <input
                   value={table().valueLabel}
                   placeholder={defaultValueLabelPlaceholder || undefined}
@@ -1685,6 +1936,18 @@ const ManageReports: Component = () => {
                     />
                     Include all agencies
                   </label>
+                  <label class="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={areAllNonLegacyAgenciesSelected(table())}
+                      onChange={(e) =>
+                        setAllNonLegacyAgenciesSelected(
+                          e.currentTarget.checked,
+                        )
+                      }
+                    />
+                    Include all non-legacy agencies
+                  </label>
                   <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     <For each={agencyOptions()}>
                       {(agency) => (
@@ -1693,6 +1956,8 @@ const ManageReports: Component = () => {
                             type="checkbox"
                             checked={
                               areAllAgenciesSelected(table()) ||
+                              (areAllNonLegacyAgenciesSelected(table()) &&
+                                !isLegacyAgency(agency)) ||
                               (table().agencyCodes || []).includes(agency.code)
                             }
                             onChange={(e) =>

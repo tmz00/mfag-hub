@@ -29,6 +29,7 @@ import {
 import {
   teamService,
   type TeamUser,
+  type TeamAgency,
   isStaffUser,
 } from "../../../services/teamService";
 import {
@@ -1238,6 +1239,91 @@ function buildRows(
     });
 }
 
+function describeAgency(agency: Pick<TeamAgency, "code" | "name">) {
+  const code = (agency.code || "").trim();
+  const name = (agency.name || "").trim();
+  return name ? `${name} (${code})` : code;
+}
+
+function resolveTableAgencies(
+  table: ReportTableLayout,
+  agencies: TeamAgency[],
+): TeamAgency[] {
+  const selectedCodes =
+    table.includeAllAgencies
+      ? agencies.map((agency) => agency.code)
+      : table.includeAllNonLegacyAgencies
+        ? agencies
+            .filter((agency) => agency.isDeleted !== true && agency.isActive !== false)
+            .map((agency) => agency.code)
+        : !table.agencyCodes || table.agencyCodes.length === 0
+          ? agencies.map((agency) => agency.code)
+          : table.agencyCodes;
+  const byCode = new Map(
+    agencies
+      .map((agency) => [(agency.code || "").trim(), agency] as const)
+      .filter(([code]) => code !== ""),
+  );
+  const seen = new Set<string>();
+
+  return selectedCodes
+    .map((rawCode) => {
+      const code = String(rawCode || "").trim();
+      if (!code || seen.has(code)) return null;
+      seen.add(code);
+      return byCode.get(code) || { code, name: "" };
+    })
+    .filter((agency): agency is TeamAgency => agency !== null);
+}
+
+function applyAgencyBreakdownToTable(
+  table: ReportTableLayout,
+  agency: TeamAgency,
+  index: number,
+  singleTable: boolean,
+): ReportTableLayout {
+  const agencyLabel = describeAgency(agency);
+  const id = table.id * 1000 + index + 1;
+
+  if (singleTable) {
+    return {
+      ...table,
+      id,
+      agencyGroupLabel: agencyLabel,
+      includeAllAgencies: false,
+      agencyCodes: [agency.code],
+      agencyBreakdown: false,
+    };
+  }
+
+  return {
+    ...table,
+    id,
+    agencyGroupLabel: agencyLabel,
+    includeAllAgencies: false,
+    agencyCodes: [agency.code],
+    agencyBreakdown: false,
+  };
+}
+
+function isAgencySummaryReport(report: ReportTemplate): boolean {
+  return report.layoutMode === "agencySummary";
+}
+
+function isCombinedFscReport(report: ReportTemplate): boolean {
+  return report.layoutMode
+    ? report.layoutMode === "combinedFsc"
+    : report.singleTable === true;
+}
+
+function isNonLegacyAgency(agency: TeamAgency | undefined): boolean {
+  return !!agency && agency.isDeleted !== true && agency.isActive !== false;
+}
+
+function isLegacyAgency(agency: TeamAgency | undefined): boolean {
+  return agency?.isDeleted === true || agency?.isActive === false;
+}
+
 function applyTemplate(template: string, date: Date) {
   const year = String(date.getFullYear());
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -1411,6 +1497,12 @@ const Reports: Component = () => {
       const fscCode = (user.fscCode || "").trim();
       return fscCode && !isStaffUser(fscCode);
     });
+    const agencyOptions = teamData()?.agencies || [];
+    const agencyByCode = new Map(
+      agencyOptions
+        .map((agency) => [(agency.code || "").trim(), agency] as const)
+        .filter(([code]) => code !== ""),
+    );
 
     const isRookie = (user: TeamUser | undefined, rookieYears: number) => {
       if (!user?.contractYear) return false;
@@ -1423,11 +1515,13 @@ const Reports: Component = () => {
       table: ReportTableLayout,
     ) => {
       if (!user) return false;
-      if (
-        table.includeAllAgencies ||
-        !table.agencyCodes ||
-        table.agencyCodes.length === 0
-      ) {
+      if (table.includeAllAgencies) {
+        return true;
+      }
+      if (table.includeAllNonLegacyAgencies) {
+        return isNonLegacyAgency(agencyByCode.get(user.agencyCode || ""));
+      }
+      if (!table.agencyCodes || table.agencyCodes.length === 0) {
         return true;
       }
       return table.agencyCodes.includes(user.agencyCode || "");
@@ -1615,10 +1709,155 @@ const Reports: Component = () => {
       };
     };
 
-    let tables = report.tables.map(makeTable);
+    const makeAgencySummaryTable = (
+      table: ReportTableLayout,
+    ): ReportRenderTable => {
+      const map = new Map<string, { name: string; value: number }>();
+      const selectedProductTypeKeys = new Set(table.productTypeKeys || []);
+      const includedKeywords = parseProductKeywords(
+        table.includeProductKeywords,
+      );
+      const excludedKeywords = parseProductKeywords(
+        table.excludeProductKeywords,
+      );
+      const hasProductFilters =
+        selectedProductTypeKeys.size > 0 ||
+        includedKeywords.length > 0 ||
+        excludedKeywords.length > 0;
+      const allowedAgencyCodes = new Set(
+        table.includeAllAgencies
+          ? agencyOptions.map((agency) => agency.code)
+          : table.includeAllNonLegacyAgencies
+            ? agencyOptions
+                .filter(isNonLegacyAgency)
+                .map((agency) => agency.code)
+            : !table.agencyCodes || table.agencyCodes.length === 0
+              ? agencyOptions.map((agency) => agency.code)
+          : table.agencyCodes,
+      );
+
+      allowedAgencyCodes.forEach((code) => {
+        const trimmedCode = String(code || "").trim();
+        if (!trimmedCode) return;
+        const agency = agencyByCode.get(trimmedCode);
+        addValue(
+          map,
+          trimmedCode,
+          describeAgency(agency || { code: trimmedCode, name: "" }),
+          0,
+        );
+      });
+
+      closingsData.forEach((closing) => {
+        if (!closingMatchesSourceFilters(closing, table)) {
+          return;
+        }
+
+        const filteredProducts = calculateFilteredProductMetrics(
+          closing.items || [],
+          selectedProductTypeKeys,
+          includedKeywords,
+          excludedKeywords,
+        );
+        const value = computeMetric(
+          closing,
+          table,
+          filteredProducts,
+          hasProductFilters,
+        );
+        if (value === 0) return;
+
+        const recipients: Array<{ code: string; name: string }> = [];
+        const primaryUser = teamMap.get((closing.fscCode || "").trim());
+        const primaryAgencyCode = (primaryUser?.agencyCode || "").trim();
+        if (primaryAgencyCode && allowedAgencyCodes.has(primaryAgencyCode)) {
+          const agency = agencyByCode.get(primaryAgencyCode);
+          recipients.push({
+            code: primaryAgencyCode,
+            name: describeAgency(agency || { code: primaryAgencyCode, name: "" }),
+          });
+        }
+
+        const hasShared =
+          typeof closing.isShared === "boolean"
+            ? closing.isShared
+            : !!(closing.sharedFscCode || closing.sharedFscName);
+        const sharedUser = closing.sharedFscCode
+          ? teamMap.get((closing.sharedFscCode || "").trim())
+          : undefined;
+        const sharedAgencyCode = (sharedUser?.agencyCode || "").trim();
+        if (
+          hasShared &&
+          sharedAgencyCode &&
+          sharedAgencyCode !== primaryAgencyCode &&
+          allowedAgencyCodes.has(sharedAgencyCode)
+        ) {
+          const agency = agencyByCode.get(sharedAgencyCode);
+          recipients.push({
+            code: sharedAgencyCode,
+            name: describeAgency(agency || { code: sharedAgencyCode, name: "" }),
+          });
+        }
+
+        if (recipients.length === 0) return;
+        const sharedValue = value / recipients.length;
+        recipients.forEach((recipient) =>
+          addValue(map, recipient.code, recipient.name, sharedValue),
+        );
+      });
+
+      return {
+        ...table,
+        includeFooterTotalRow: table.includeFooterTotalRow === true,
+        rows: buildRows(map),
+      };
+    };
+
+    if (isAgencySummaryReport(report)) {
+      return report.tables.map(makeAgencySummaryTable);
+    }
+
+    const agencyBreakdownSource = report.agencyBreakdown
+      ? report.tables[0]
+      : report.tables.find(
+      (table) => table.agencyBreakdown === true,
+    );
+    const expandedLayoutTables = agencyBreakdownSource
+      ? resolveTableAgencies(agencyBreakdownSource, teamData()?.agencies || [])
+          .flatMap((agency, agencyIndex) =>
+            report.tables.map((table, tableIndex) =>
+              applyAgencyBreakdownToTable(
+                table,
+                agency,
+                agencyIndex * Math.max(1, report.tables.length) + tableIndex,
+                isCombinedFscReport(report),
+              ),
+            ),
+          )
+      : report.tables.flatMap((table) => {
+      if (!table.agencyBreakdown) {
+        return [table];
+      }
+
+      const agencies = resolveTableAgencies(table, teamData()?.agencies || []);
+      if (agencies.length === 0) {
+        return [table];
+      }
+
+      return agencies.map((agency, index) =>
+        applyAgencyBreakdownToTable(
+          table,
+          agency,
+          index,
+          isCombinedFscReport(report),
+        ),
+      );
+    });
+
+    let tables = expandedLayoutTables.map(makeTable);
     const maxRows = Math.max(1, ...tables.map((table) => table.rows.length));
 
-    if (report.includeIndexTable && !report.singleTable) {
+    if (report.includeIndexTable && !isCombinedFscReport(report)) {
       const indexRows = Array.from({ length: maxRows }).map(() => ({
         name: "",
         value: 0,

@@ -424,6 +424,122 @@ describe("GenerateReports admin page", () => {
     expect(afypForAlex).toBeCloseTo(2500, 6);
   });
 
+  it("expands agency breakdown tables into one rendered table per selected agency", async () => {
+    getTeamDataMock.mockResolvedValueOnce({
+      users: [
+        {
+          id: "user-1",
+          nickname: "Alex Tan",
+          fscCode: "A123",
+          agencyCode: "AG01",
+        },
+        {
+          id: "user-2",
+          nickname: "Blair Ong",
+          fscCode: "B456",
+          agencyCode: "AG02",
+        },
+      ],
+      agencies: [
+        { code: "AG01", name: "Agency 01" },
+        { code: "AG02", name: "Agency 02" },
+      ],
+    });
+    getReportsMock.mockResolvedValueOnce([
+      {
+        ...buildTemplate(1, "Agency Split", "{YYYYMMDD}_agency_split"),
+        agencyBreakdown: true,
+        includeIndexTable: false,
+        tables: [
+          {
+            ...buildMetricTable(1, "fyc", "TOP FYC"),
+          },
+        ],
+      },
+    ]);
+    getClosingsMock.mockResolvedValueOnce([
+      {
+        id: "closing-1",
+        timestamp: "2026-02-10T09:00:00.000Z",
+        fscCode: "A123",
+        fscName: "Alex Tan",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "prod-alpha",
+            fullName: "Alpha",
+            shortName: "Alpha",
+            fycRate: 1,
+            gst: 0,
+            quantitiesAndPremiums: [{ quantity: 1, premium: 100, frequency: "Annual" }],
+            riders: [],
+          },
+        ],
+      },
+      {
+        id: "closing-2",
+        timestamp: "2026-02-11T09:00:00.000Z",
+        fscCode: "B456",
+        fscName: "Blair Ong",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "prod-beta",
+            fullName: "Beta",
+            shortName: "Beta",
+            fycRate: 1,
+            gst: 0,
+            quantitiesAndPremiums: [{ quantity: 1, premium: 200, frequency: "Annual" }],
+            riders: [],
+          },
+        ],
+      },
+    ]);
+
+    await renderExtractReports();
+    fireEvent.click(screen.getByRole("button", { name: "Generate Reports" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("20260214_agency_split.pdf")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTitle("Download report"));
+
+    await waitFor(() => {
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = generateReportPdfMock.mock.calls[0]?.[0] as {
+      tables: Array<{
+        titleLines: string[];
+        agencyGroupLabel?: string;
+        agencyCodes?: string[];
+        rows: Array<{ key?: string; value: number }>;
+      }>;
+    };
+
+    expect(payload.tables.map((table) => table.agencyCodes)).toEqual([
+      ["AG01"],
+      ["AG02"],
+    ]);
+    expect(payload.tables.map((table) => table.agencyGroupLabel)).toEqual([
+      "Agency 01 (AG01)",
+      "Agency 02 (AG02)",
+    ]);
+    expect(payload.tables.map((table) => table.titleLines[0])).toEqual([
+      "TOP FYC",
+      "TOP FYC",
+    ]);
+    expect(payload.tables[0]?.rows.find((row) => row.key === "A123")?.value).toBe(1);
+    expect(payload.tables[0]?.rows.find((row) => row.key === "B456")).toBeUndefined();
+    expect(payload.tables[1]?.rows.find((row) => row.key === "A123")).toBeUndefined();
+    expect(payload.tables[1]?.rows.find((row) => row.key === "B456")?.value).toBe(2);
+  });
+
   it("lists every source and lets each breakdown section switch metrics", async () => {
     getClosingsMock.mockResolvedValueOnce([
       {
@@ -848,6 +964,143 @@ describe("GenerateReports admin page", () => {
     expect(renderArgs.tables.some((table) => table.id === "index-only")).toBe(
       false,
     );
+  });
+
+  it("aggregates agency summary rows for selected metric columns", async () => {
+    getTeamDataMock.mockResolvedValueOnce({
+      users: [
+        { fscCode: "A123", nickname: "Alex Tan", agencyCode: "AG01" },
+        { fscCode: "B456", nickname: "Blair Ong", agencyCode: "AG02" },
+        { fscCode: "C789", nickname: "Chris Lim", agencyCode: "AG03" },
+      ],
+      agencies: [
+        { code: "AG01", name: "Agency 01" },
+        { code: "AG02", name: "Agency 02" },
+        { code: "AG03", name: "Legacy Agency", isDeleted: true },
+      ],
+    });
+    getReportsMock.mockResolvedValueOnce([
+      {
+        ...buildTemplate(5, "Agency Summary", "{YYYYMMDD}_Agency_Summary"),
+        layoutMode: "agencySummary",
+        singleTable: false,
+        includeIndexTable: false,
+        tables: [
+          {
+            ...buildMetricTable(1, "fyc", "TOTAL FYC"),
+            includeAllAgencies: false,
+            includeAllNonLegacyAgencies: true,
+          },
+          {
+            ...buildMetricTable(2, "afyp", "TOTAL AFYP"),
+            includeAllAgencies: false,
+            includeAllNonLegacyAgencies: true,
+          },
+          {
+            ...buildMetricTable(3, "afyp", "TOTAL CASE COUNT"),
+            includeAllAgencies: false,
+            includeAllNonLegacyAgencies: true,
+            valueLabel: "Cases",
+            valueFormat: "count",
+            metric: { type: "countCases" },
+          },
+        ],
+      },
+    ]);
+    getClosingsMock.mockResolvedValueOnce([
+      {
+        id: "closing-1",
+        timestamp: "2026-02-10T09:00:00.000Z",
+        fscCode: "A123",
+        fscName: "Alex Tan",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "prod-alpha",
+            fullName: "Alpha",
+            shortName: "Alpha",
+            fycRate: 1,
+            gst: 0,
+            quantitiesAndPremiums: [{ quantity: 1, premium: 100, frequency: "Annual" }],
+            riders: [],
+          },
+        ],
+      },
+      {
+        id: "closing-2",
+        timestamp: "2026-02-11T09:00:00.000Z",
+        fscCode: "B456",
+        fscName: "Blair Ong",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "prod-beta",
+            fullName: "Beta",
+            shortName: "Beta",
+            fycRate: 1,
+            gst: 0,
+            quantitiesAndPremiums: [{ quantity: 2, premium: 200, frequency: "Annual" }],
+            riders: [],
+          },
+        ],
+      },
+      {
+        id: "closing-3",
+        timestamp: "2026-02-12T09:00:00.000Z",
+        fscCode: "C789",
+        fscName: "Chris Lim",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "prod-gamma",
+            fullName: "Gamma",
+            shortName: "Gamma",
+            fycRate: 1,
+            gst: 0,
+            quantitiesAndPremiums: [{ quantity: 3, premium: 1000, frequency: "Annual" }],
+            riders: [],
+          },
+        ],
+      },
+    ]);
+
+    await renderExtractReports();
+    fireEvent.click(screen.getByRole("button", { name: "Generate Reports" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("20260214_Agency_Summary.pdf")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTitle("Download report"));
+
+    await vi.waitFor(() => {
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = generateReportPdfMock.mock.calls[0]?.[0] as {
+      report: { layoutMode?: string; singleTable?: boolean };
+      tables: Array<{ titleLines: string[]; rows: Array<{ key?: string; name: string; value: number }> }>;
+    };
+
+    expect(payload.report.layoutMode).toBe("agencySummary");
+    expect(payload.report.singleTable).toBe(false);
+    expect(payload.tables).toHaveLength(3);
+    expect(payload.tables[0]?.rows.map((row) => row.name)).toEqual([
+      "Agency 02 (AG02)",
+      "Agency 01 (AG01)",
+    ]);
+    expect(payload.tables[0]?.rows.find((row) => row.key === "AG01")?.value).toBe(1);
+    expect(payload.tables[0]?.rows.find((row) => row.key === "AG02")?.value).toBe(4);
+    expect(payload.tables[0]?.rows.find((row) => row.key === "AG03")).toBeUndefined();
+    expect(payload.tables[2]?.rows.map((row) => row.key)).toEqual(["AG02", "AG01"]);
+    expect(payload.tables[2]?.rows.find((row) => row.key === "AG01")?.value).toBe(1);
+    expect(payload.tables[2]?.rows.find((row) => row.key === "AG02")?.value).toBe(2);
   });
 
   it("uses case count to count qualifying closings", async () => {

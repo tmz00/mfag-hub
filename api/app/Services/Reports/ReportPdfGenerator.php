@@ -14,7 +14,7 @@ class ReportPdfGenerator
     private const HEADER_ROW_FONT_WEIGHT = 900;
     private const MIN_PAGE_ASPECT_RATIO = 0.8;
     private const MAX_PAGE_ASPECT_RATIO = 1.8;
-    private const MAX_TABLES = 30;
+    private const MAX_TABLES = 200;
     private const MAX_ROWS_PER_TABLE = 500;
     private const MAX_ROW_NAME_LENGTH = 80;
     private const MAX_VALUE_LABEL_LENGTH = 80;
@@ -55,6 +55,26 @@ class ReportPdfGenerator
             'bold' => $fontRoot . '/Barlow-Bold.ttf',
             'boldItalic' => $fontRoot . '/Barlow-BoldItalic.ttf',
         ];
+    }
+
+    private function normalizeLayoutMode(array $rawReport): string
+    {
+        $candidate = trim((string) ($rawReport['layoutMode'] ?? $rawReport['layout_mode'] ?? ''));
+        if (in_array($candidate, ['separateLeaderboards', 'combinedFsc', 'agencySummary'], true)) {
+            return $candidate;
+        }
+
+        return ((bool) ($rawReport['singleTable'] ?? false)) ? 'combinedFsc' : 'separateLeaderboards';
+    }
+
+    private function primaryRowHeaderLabel(array $report): string
+    {
+        $custom = trim((string) ($report['primaryColumnHeader'] ?? ''));
+        if ($custom !== '') {
+            return $custom;
+        }
+
+        return ($report['layoutMode'] ?? '') === 'agencySummary' ? 'Agency' : 'Name';
     }
 
     /**
@@ -187,8 +207,16 @@ class ReportPdfGenerator
             'tableGap' => $this->clampInt($rawReport['tableGap'] ?? 15, 0, 80),
             'tableWidth' => $this->clampInt($rawReport['tableWidth'] ?? 170, 60, 500),
             'indexTableWidth' => $this->clampInt($rawReport['indexTableWidth'] ?? 46, 0, 200),
+            'primaryColumnHeader' => $this->truncateString(
+                trim((string) ($rawReport['primaryColumnHeader'] ?? '')),
+                80
+            ),
+            'primaryColumnWidth' => $this->clampInt($rawReport['primaryColumnWidth'] ?? 120, 40, 500),
             'includeIndexTable' => (bool) ($rawReport['includeIndexTable'] ?? true),
-            'singleTable' => (bool) ($rawReport['singleTable'] ?? false),
+            'layoutMode' => $this->normalizeLayoutMode($rawReport),
+            'singleTable' => (bool) ($rawReport['singleTable'] ?? false)
+                || $this->normalizeLayoutMode($rawReport) === 'combinedFsc',
+            'agencyTableGap' => $this->clampInt($rawReport['agencyTableGap'] ?? 30, 0, 500),
             'bottomFootnote' => $this->truncateString(
                 trim((string) ($rawReport['bottomFootnote'] ?? '')),
                 self::MAX_FOOTNOTE_LENGTH
@@ -312,6 +340,10 @@ class ReportPdfGenerator
             ),
             'rookieYears' => $this->clampInt($rawTable['rookieYears'] ?? 2, 1, 10),
             'metricType' => $metricType,
+            'agencyGroupLabel' => $this->truncateString(
+                trim((string) ($rawTable['agencyGroupLabel'] ?? '')),
+                self::MAX_VALUE_LABEL_LENGTH
+            ),
             'rows' => $rows,
         ];
     }
@@ -361,6 +393,7 @@ class ReportPdfGenerator
         $tableGap = $report['tableGap'];
         $titlePadding = 8;
         $titleLineHeight = 14;
+        $titleTextBaselineInset = 20;
         $headerRowHeight = 28;
         $rowHeight = 24;
         $footnoteLineHeight = 12;
@@ -372,12 +405,87 @@ class ReportPdfGenerator
         $bottomFootnotePadding = 2;
 
         $tableWidthFor = function (array $table) use ($report, $tableWidth): int {
-            return $table['indexOnly'] ? $report['indexTableWidth'] : $tableWidth;
+            if ($table['indexOnly']) {
+                return $report['indexTableWidth'];
+            }
+
+            $indexWidth = $table['showIndex'] ? 32 : 0;
+            $nameWidth = (int) ($report['primaryColumnWidth'] ?? 100);
+            return $indexWidth + $nameWidth + $tableWidth + 16;
         };
 
         if ($report['singleTable']) {
-            $singleTableNameColumnWidth = 120;
+            $singleTableNameColumnWidth = (int) ($report['primaryColumnWidth'] ?? 120);
             $metricTables = $this->singleTableMetricTables($tables);
+            $agencySections = $this->singleTableAgencySections($metricTables);
+            if ($agencySections !== []) {
+                $sectionGap = $report['agencyTableGap'];
+                $indexWidth = $report['includeIndexTable'] ? $report['indexTableWidth'] : 0;
+                $maxSectionWidth = 0;
+                $sectionsHeight = 0;
+                foreach ($agencySections as $sectionIndex => $section) {
+                    $sectionTables = $section['tables'];
+                    [$orderedRows] = $this->buildSingleTableRowData($sectionTables);
+                    $rowCount = max(1, count($orderedRows));
+                    $maxHeaderLineCount = $report['includeIndexTable'] ? 1 : 0;
+                    $maxHeaderLineCount = max($maxHeaderLineCount, 1);
+                    $metricHeaderWrapWidth = max(20, $tableWidth - 8);
+                    foreach ($sectionTables as $table) {
+                        $headerLines = $this->singleTableHeaderLines($table, $metricHeaderWrapWidth);
+                        $maxHeaderLineCount = max($maxHeaderLineCount, max(1, count($headerLines)));
+                    }
+                    $headerRowHeight = 8 + ($maxHeaderLineCount * $titleLineHeight);
+                    $hasFooterTotals = false;
+                    foreach ($sectionTables as $table) {
+                        if ($table['includeFooterTotalRow']) {
+                            $hasFooterTotals = true;
+                            break;
+                        }
+                    }
+                    $sectionWidth = $indexWidth + $singleTableNameColumnWidth + (count($sectionTables) * $tableWidth);
+                    $agencyHeaderHeight = ($titlePadding * 2) + $titleLineHeight + 2;
+                    $sectionHeight = $agencyHeaderHeight
+                        + (($titlePadding * 2) + $titleLineHeight + 2)
+                        + $headerRowHeight
+                        + ($rowHeight * $rowCount)
+                        + ($hasFooterTotals ? $rowHeight : 0);
+                    $maxSectionWidth = max($maxSectionWidth, $sectionWidth);
+                    $sectionsHeight += $sectionHeight + ($sectionIndex > 0 ? $sectionGap : 0);
+                }
+
+                $width = ($pagePadding * 2) + $maxSectionWidth;
+                $bottomFootnoteText = $report['bottomFootnote'] !== ''
+                    ? $this->applyTemplate($report['bottomFootnote'], $reportDate)
+                    : '';
+                $bottomFootnoteLineCount = $bottomFootnoteText !== ''
+                    ? count($this->wrapText($bottomFootnoteText, $width - ($pagePadding * 2), 12, 400, true))
+                    : 0;
+                $effectiveBottomFootnoteTopPadding = $bottomFootnoteTopPaddingWithoutSiblingFooters;
+                $bottomFootnoteHeight = $bottomFootnoteText !== ''
+                    ? $effectiveBottomFootnoteTopPadding + $bottomFootnotePadding + ($bottomFootnoteLineCount * $footnoteLineHeight)
+                    : 0;
+
+                $logo = $this->loadLogo($logoPath);
+                $preLogoBottom = $pagePadding;
+                if ($logo !== null) {
+                    [, $logoHeight] = $this->fitLogo(imagesx($logo), imagesy($logo), $width - ($pagePadding * 2), 120);
+                    $preLogoBottom = $pagePadding + $logoHeight + 14;
+                    imagedestroy($logo);
+                }
+                $tableTopY = max($pagePadding + $headerHeight, $preLogoBottom + 70);
+                $height = $tableTopY + $sectionsHeight + $bottomFootnoteHeight + $pageBottomPadding;
+                [$width, $height] = $this->stabilizePageAspectRatio($width, $height, $pagePadding, false);
+
+                return [
+                    $width,
+                    $height,
+                    $tableTopY,
+                    $sectionsHeight,
+                    $bottomFootnotePadding,
+                    $effectiveBottomFootnoteTopPadding,
+                    [],
+                ];
+            }
             $metricColumnGaps = $this->singleTableMetricColumnGaps($metricTables, $tableGap);
             $metricCount = max(1, count($metricTables));
             [$orderedRows] = $this->buildSingleTableRowData($metricTables);
@@ -412,9 +520,13 @@ class ReportPdfGenerator
 
             $singleTitleRowMinHeight = ($titlePadding * 2) + $titleLineHeight + 2;
             $maxGroupTitleLineCount = 1;
+            $hasGroupTitleRow = false;
             $groupStart = 0;
             while ($groupStart < count($metricTables)) {
                 $groupLabel = trim((string) ($metricTables[$groupStart]['valueLabel'] ?? ''));
+                if ($groupLabel !== '') {
+                    $hasGroupTitleRow = true;
+                }
                 $groupEnd = $groupStart;
                 while (
                     ($groupEnd + 1) < count($metricTables)
@@ -437,10 +549,12 @@ class ReportPdfGenerator
                 $maxGroupTitleLineCount = max($maxGroupTitleLineCount, max(1, count($groupLines)));
                 $groupStart = $groupEnd + 1;
             }
-            $singleTitleRowHeight = max(
-                $singleTitleRowMinHeight,
-                ($titlePadding * 2) + ($maxGroupTitleLineCount * $titleLineHeight) + 2
-            );
+            $singleTitleRowHeight = $hasGroupTitleRow
+                ? max(
+                    $singleTitleRowMinHeight,
+                    ($titlePadding * 2) + ($maxGroupTitleLineCount * $titleLineHeight) + 2
+                )
+                : 0;
 
             $maxSubHeaderLineCount = 1;
             if ($report['includeIndexTable']) {
@@ -454,7 +568,7 @@ class ReportPdfGenerator
                 $maxSubHeaderLineCount = max($maxSubHeaderLineCount, max(1, count($indexLines)));
             }
             $nameLines = $this->wrapText(
-                'Name',
+                $this->primaryRowHeaderLabel($report),
                 max(20, $singleTableNameColumnWidth - 8),
                 12,
                 self::HEADER_ROW_FONT_WEIGHT,
@@ -537,7 +651,14 @@ class ReportPdfGenerator
             ];
         }
 
-        $tableBlockWidth = $this->tableBlockWidth($tables, $tableWidthFor, $tableGap);
+        $standardAgencySections = $this->singleTableAgencySections($tables);
+        $standardAgencySectionGap = $report['agencyTableGap'];
+        $tableBlockWidth = $standardAgencySections !== []
+            ? max(array_map(
+                fn(array $section): float => $this->tableBlockWidth($section['tables'], $tableWidthFor, $tableGap),
+                $standardAgencySections
+            ))
+            : $this->tableBlockWidth($tables, $tableWidthFor, $tableGap);
         $width = ($pagePadding * 2) + $tableBlockWidth;
 
         $footnotesById = [];
@@ -558,55 +679,98 @@ class ReportPdfGenerator
 
         $maxTitleLines = 3;
         $maxTitleBlockHeight = ($titlePadding * 2) + ($maxTitleLines * $titleLineHeight) + 2;
-        $baseTableBlockHeight = $maxTitleBlockHeight + $headerRowHeight + ($rowHeight * $maxRows);
+        $sectionsForHeight = $standardAgencySections !== []
+            ? $standardAgencySections
+            : [['label' => '', 'tables' => $tables]];
 
-        $extraTableBlockHeight = 0;
+        $maxTableBlockHeight = 0;
         $bottomAdjacentContent = 'none';
         $priority = [
             'none' => 0,
             'footnote' => 1,
             'footer-row' => 2,
         ];
-        foreach ($tables as $table) {
-            $collapseRows = $table['rookieFilter'] === 'rookies' && $table['includeAllAdvisors'] === false;
-            $rowCount = $collapseRows ? max(1, count($table['rows'])) : $maxRows;
-            $rowsBottom = $maxTitleBlockHeight + $headerRowHeight + ($rowHeight * $rowCount);
-            $tableBottom = $rowsBottom;
-            $tableBottomType = 'none';
-
-            if ($table['includeFooterTotalRow']) {
-                $footerBottom = $rowsBottom + $rowHeight;
-                if ($footerBottom > $tableBottom) {
-                    $tableBottom = $footerBottom;
-                    $tableBottomType = 'footer-row';
-                }
+        $sectionRowCapacity = function (array $sectionTables) use ($standardAgencySections, $maxRows): int {
+            if ($standardAgencySections === []) {
+                return $maxRows;
             }
 
-            if (isset($footnotesById[$table['id']])) {
-                $footnoteBottom = $rowsBottom
-                    + ($table['includeFooterTotalRow'] ? $rowHeight : 0)
-                    + $footnotesById[$table['id']]['height'];
-                if ($footnoteBottom > $tableBottom) {
-                    $tableBottom = $footnoteBottom;
-                    $tableBottomType = 'footnote';
-                }
+            $rowCount = 1;
+            foreach ($sectionTables as $table) {
+                $rowCount = max($rowCount, count($table['rows'] ?? []));
             }
 
-            $overflow = max(0, $tableBottom - $baseTableBlockHeight);
-            if ($overflow > $extraTableBlockHeight) {
-                $extraTableBlockHeight = $overflow;
-                $bottomAdjacentContent = $overflow > 0 ? $tableBottomType : 'none';
-                continue;
+            return $rowCount;
+        };
+        $sectionBlockHeight = function (array $sectionTables) use (
+            $sectionRowCapacity,
+            $maxTitleBlockHeight,
+            $headerRowHeight,
+            $rowHeight,
+            $footnotesById,
+            $priority,
+            &$maxTableBlockHeight,
+            &$bottomAdjacentContent
+        ): int {
+            $rowCapacity = $sectionRowCapacity($sectionTables);
+            $baseHeight = $maxTitleBlockHeight + $headerRowHeight + ($rowHeight * $rowCapacity);
+            $height = $baseHeight;
+            $sectionBottomType = 'none';
+
+            foreach ($sectionTables as $table) {
+                $collapseRows = $table['rookieFilter'] === 'rookies' && $table['includeAllAdvisors'] === false;
+                $rowCount = $collapseRows ? max(1, count($table['rows'])) : $rowCapacity;
+                $rowsBottom = $maxTitleBlockHeight + $headerRowHeight + ($rowHeight * $rowCount);
+                $tableBottom = $rowsBottom;
+                $tableBottomType = 'none';
+
+                if ($table['includeFooterTotalRow']) {
+                    $footerBottom = $rowsBottom + $rowHeight;
+                    if ($footerBottom > $tableBottom) {
+                        $tableBottom = $footerBottom;
+                        $tableBottomType = 'footer-row';
+                    }
+                }
+
+                if (isset($footnotesById[$table['id']])) {
+                    $footnoteBottom = $rowsBottom
+                        + ($table['includeFooterTotalRow'] ? $rowHeight : 0)
+                        + $footnotesById[$table['id']]['height'];
+                    if ($footnoteBottom > $tableBottom) {
+                        $tableBottom = $footnoteBottom;
+                        $tableBottomType = 'footnote';
+                    }
+                }
+
+                if ($tableBottom > $height) {
+                    $height = $tableBottom;
+                    $sectionBottomType = $tableBottomType;
+                } elseif (
+                    $tableBottom === $height
+                    && ($priority[$tableBottomType] ?? 0) > ($priority[$sectionBottomType] ?? 0)
+                ) {
+                    $sectionBottomType = $tableBottomType;
+                }
             }
 
             if (
-                $overflow === $extraTableBlockHeight
-                && $overflow > 0
-                && ($priority[$tableBottomType] ?? 0) > ($priority[$bottomAdjacentContent] ?? 0)
+                $height > $maxTableBlockHeight
+                || (
+                    $height === $maxTableBlockHeight
+                    && ($priority[$sectionBottomType] ?? 0) > ($priority[$bottomAdjacentContent] ?? 0)
+                )
             ) {
-                $bottomAdjacentContent = $tableBottomType;
+                $maxTableBlockHeight = $height;
+                $bottomAdjacentContent = $sectionBottomType;
             }
-        }
+
+            return $height;
+        };
+        $standardSectionHeights = array_map(
+            fn(array $section): int => $sectionBlockHeight($section['tables']),
+            $sectionsForHeight
+        );
+        $tableBlockHeight = $maxTableBlockHeight;
 
         $effectiveBottomFootnoteTopPadding = match ($bottomAdjacentContent) {
             'footnote' => $bottomFootnoteTopPaddingAfterTableFootnotes,
@@ -617,7 +781,11 @@ class ReportPdfGenerator
         $bottomFootnoteText = $report['bottomFootnote'] !== ''
             ? $this->applyTemplate($report['bottomFootnote'], $reportDate)
             : '';
-        $tableBlockHeight = $baseTableBlockHeight + $extraTableBlockHeight;
+        $renderedTableBlockHeight = $standardAgencySections !== []
+            ? array_sum($standardSectionHeights)
+                + (count($standardAgencySections) * (($titlePadding * 2) + $titleLineHeight + 2))
+                + ((count($standardAgencySections) - 1) * $standardAgencySectionGap)
+            : $tableBlockHeight;
         $logo = $this->loadLogo($logoPath);
         $bottomFootnoteLineCount = 0;
         if ($bottomFootnoteText !== '') {
@@ -640,8 +808,13 @@ class ReportPdfGenerator
         }
 
         $tableTopY = max($pagePadding + $headerHeight, $preLogoBottom + 70);
-        $height = $tableTopY + $tableBlockHeight + $bottomFootnoteHeight + $pageBottomPadding;
-        [$width, $height] = $this->stabilizePageAspectRatio($width, $height, $pagePadding);
+        $height = $tableTopY + $renderedTableBlockHeight + $bottomFootnoteHeight + $pageBottomPadding;
+        [$width, $height] = $this->stabilizePageAspectRatio(
+            $width,
+            $height,
+            $pagePadding,
+            $standardAgencySections === []
+        );
 
         if ($logo !== null) {
             imagedestroy($logo);
@@ -723,23 +896,106 @@ class ReportPdfGenerator
         $maxTitleLines = 3;
         $maxTitleBlockHeight = ($titlePadding * 2) + ($maxTitleLines * $titleLineHeight) + 2;
         $tableWidthFor = function (array $table) use ($report, $tableWidth): int {
-            return $table['indexOnly'] ? $report['indexTableWidth'] : $tableWidth;
+            if ($table['indexOnly']) {
+                return $report['indexTableWidth'];
+            }
+
+            $indexWidth = $table['showIndex'] ? 32 : 0;
+            $nameWidth = (int) ($report['primaryColumnWidth'] ?? 100);
+            return $indexWidth + $nameWidth + $tableWidth + 16;
         };
 
-        $tableBlockWidth = $this->tableBlockWidth($tables, $tableWidthFor, $tableGap);
-        $currentX = max($pagePadding, ($pageWidth - $tableBlockWidth) / 2);
-        foreach ($tables as $index => $table) {
+        $standardAgencySections = $this->singleTableAgencySections($tables);
+        $sectionsToRender = $standardAgencySections !== []
+            ? $standardAgencySections
+            : [['label' => '', 'tables' => $tables]];
+        $standardAgencySectionGap = $report['agencyTableGap'];
+        $agencyHeaderHeight = ($titlePadding * 2) + $titleLineHeight + 2;
+        $sectionRowCapacity = function (array $sectionTables) use ($standardAgencySections, $maxRows): int {
+            if ($standardAgencySections === []) {
+                return $maxRows;
+            }
+
+            $rowCount = 1;
+            foreach ($sectionTables as $table) {
+                $rowCount = max($rowCount, count($table['rows'] ?? []));
+            }
+
+            return $rowCount;
+        };
+        $sectionBlockHeight = function (array $sectionTables) use (
+            $sectionRowCapacity,
+            $maxTitleBlockHeight,
+            $headerRowHeight,
+            $rowHeight,
+            $footnotesById,
+            $tableFootnoteTopPadding
+        ): int {
+            $rowCapacity = $sectionRowCapacity($sectionTables);
+            $height = $maxTitleBlockHeight + $headerRowHeight + ($rowHeight * $rowCapacity);
+
+            foreach ($sectionTables as $table) {
+                $collapseRows = $table['rookieFilter'] === 'rookies' && $table['includeAllAdvisors'] === false;
+                $rowCount = $collapseRows ? max(1, count($table['rows'])) : $rowCapacity;
+                $rowsBottom = $maxTitleBlockHeight + $headerRowHeight + ($rowHeight * $rowCount);
+                $tableBottom = $rowsBottom;
+
+                if ($table['includeFooterTotalRow']) {
+                    $tableBottom = max($tableBottom, $rowsBottom + $rowHeight);
+                }
+
+                if (isset($footnotesById[$table['id']])) {
+                    $tableBottom = max(
+                        $tableBottom,
+                        $rowsBottom
+                            + ($table['includeFooterTotalRow'] ? $rowHeight : 0)
+                            + ($footnotesById[$table['id']]['height'] ?? $tableFootnoteTopPadding)
+                    );
+                }
+
+                $height = max($height, $tableBottom);
+            }
+
+            return $height;
+        };
+        $sectionBlockHeights = array_map(
+            fn(array $section): int => $sectionBlockHeight($section['tables']),
+            $sectionsToRender
+        );
+        $currentSectionY = $tableTopY;
+        foreach ($sectionsToRender as $sectionIndex => $section) {
+            $sectionTables = $section['tables'];
+            $sectionRowCapacityValue = $sectionRowCapacity($sectionTables);
+            $sectionBlockHeightValue = $sectionBlockHeights[$sectionIndex] ?? $tableBlockHeight;
+            $tableBlockWidth = $this->tableBlockWidth($sectionTables, $tableWidthFor, $tableGap);
+            $currentX = max($pagePadding, ($pageWidth - $tableBlockWidth) / 2);
+            $tablesY = $currentSectionY;
+            if ($standardAgencySections !== []) {
+                $this->fillRect($currentX, $currentSectionY, $tableBlockWidth, $agencyHeaderHeight, self::COLOR_PRIMARY);
+                $this->strokeRect($currentX, $currentSectionY, $tableBlockWidth, $agencyHeaderHeight, self::COLOR_BLACK);
+                $this->drawTextCenter(
+                    (string) ($section['label'] ?? ''),
+                    $currentX + ($tableBlockWidth / 2),
+                    $currentSectionY + $titleTextBaselineInset,
+                    12,
+                    self::HEADER_ROW_FONT_WEIGHT,
+                    false,
+                    self::COLOR_WHITE
+                );
+                $tablesY += $agencyHeaderHeight;
+            }
+            foreach ($sectionTables as $index => $table) {
             if ($index > 0) {
-                $prev = $tables[$index - 1];
+                $prev = $sectionTables[$index - 1];
                 $currentX += $tableWidthFor($prev);
                 $currentX += $prev['id'] === 'index-only' ? 0 : $tableGap;
             }
 
             $x = $currentX;
-            $y = $tableTopY;
+            $y = $tablesY;
             $activeTableWidth = $tableWidthFor($table);
             $collapseRows = $table['rookieFilter'] === 'rookies' && $table['includeAllAdvisors'] === false;
-            $rowCount = $collapseRows ? max(1, count($table['rows'])) : $maxRows;
+            $rowCount = $collapseRows ? max(1, count($table['rows'])) : $sectionRowCapacityValue;
             $tableHeight = $maxTitleBlockHeight
                 + $headerRowHeight
                 + ($rowHeight * $rowCount)
@@ -775,8 +1031,8 @@ class ReportPdfGenerator
                 ? max(0, $activeTableWidth - 16)
                 : ($table['showIndex'] ? 32 : 0);
             $namePadding = 2;
-            $nameWidth = $table['indexOnly'] ? 0 : 100;
-            $valueWidth = $table['indexOnly'] ? 0 : max(0, $activeTableWidth - $indexWidth - $nameWidth - 16);
+            $nameWidth = $table['indexOnly'] ? 0 : (int) ($report['primaryColumnWidth'] ?? 100);
+            $valueWidth = $table['indexOnly'] ? 0 : $tableWidth;
             $colStart = $x + 8;
             $col1X = $colStart + $indexWidth;
             $col2X = $colStart + $indexWidth + $nameWidth;
@@ -785,7 +1041,7 @@ class ReportPdfGenerator
                 $this->drawTextCenter('No', $colStart + ($indexWidth / 2), $headerTop + 18, 12, self::HEADER_ROW_FONT_WEIGHT, false, self::COLOR_WHITE);
             }
             if (!$table['indexOnly']) {
-                $this->drawTextLeft('Name', $colStart + $indexWidth + $namePadding, $headerTop + 18, 12, self::HEADER_ROW_FONT_WEIGHT, false, self::COLOR_WHITE);
+                $this->drawTextLeft($this->primaryRowHeaderLabel($report), $colStart + $indexWidth + $namePadding, $headerTop + 18, 12, self::HEADER_ROW_FONT_WEIGHT, false, self::COLOR_WHITE);
                 $this->drawTextRight($table['valueLabel'], $colStart + $indexWidth + $nameWidth + $valueWidth, $headerTop + 18, 12, self::HEADER_ROW_FONT_WEIGHT, false, self::COLOR_WHITE);
             }
 
@@ -872,6 +1128,10 @@ class ReportPdfGenerator
                     $footerY += $footnoteLineHeight;
                 }
             }
+            }
+            $currentSectionY += ($standardAgencySections !== [] ? $agencyHeaderHeight : 0)
+                + $sectionBlockHeightValue
+                + ($sectionIndex < count($sectionsToRender) - 1 ? $standardAgencySectionGap : 0);
         }
 
         $bottomFootnote = $report['bottomFootnote'] !== ''
@@ -881,7 +1141,12 @@ class ReportPdfGenerator
             $pagePadding = 40;
             $footnoteLineHeight = 12;
             $lines = $this->wrapText($bottomFootnote, $pageWidth - ($pagePadding * 2), 12, 400, true);
-            $bottomY = $tableTopY + $tableBlockHeight + $effectiveBottomTopPadding;
+            $renderedTableBlockHeight = $standardAgencySections !== []
+                ? array_sum($sectionBlockHeights)
+                    + (count($standardAgencySections) * $agencyHeaderHeight)
+                    + ((count($standardAgencySections) - 1) * $standardAgencySectionGap)
+                : $tableBlockHeight;
+            $bottomY = $tableTopY + $renderedTableBlockHeight + $effectiveBottomTopPadding;
             foreach ($lines as $line) {
                 $this->drawTextCenter($line, $pageWidth / 2, $bottomY, 12, 400, true, self::COLOR_FOOTNOTE);
                 $bottomY += $footnoteLineHeight;
@@ -910,10 +1175,23 @@ class ReportPdfGenerator
         $rowHeight = 24;
         $footnoteLineHeight = 12;
         $tableFootnoteTopPadding = 18;
-        $singleTableNameColumnWidth = 120;
+        $singleTableNameColumnWidth = (int) ($report['primaryColumnWidth'] ?? 120);
 
         $metricTables = $this->singleTableMetricTables($context['tables']);
         if ($metricTables === []) {
+            return;
+        }
+        $agencySections = $this->singleTableAgencySections($metricTables);
+        if ($agencySections !== []) {
+            $this->drawAgencySingleTables(
+                $context,
+                $agencySections,
+                $pageWidth,
+                $tableTopY,
+                $tableBlockHeight,
+                $effectiveBottomTopPadding,
+                $bottomPadding
+            );
             return;
         }
 
@@ -937,9 +1215,13 @@ class ReportPdfGenerator
 
         $metricGroups = [];
         $maxGroupTitleLineCount = 1;
+        $hasGroupTitleRow = false;
         $groupStart = 0;
         while ($groupStart < $metricCount) {
             $groupLabel = trim((string) ($metricTables[$groupStart]['valueLabel'] ?? ''));
+            if ($groupLabel !== '') {
+                $hasGroupTitleRow = true;
+            }
             $groupEnd = $groupStart;
             while (
                 ($groupEnd + 1) < $metricCount
@@ -974,10 +1256,12 @@ class ReportPdfGenerator
         }
 
         $singleTitleRowMinHeight = ($titlePadding * 2) + $titleLineHeight + 2;
-        $singleTitleRowHeight = max(
-            $singleTitleRowMinHeight,
-            ($titlePadding * 2) + ($maxGroupTitleLineCount * $titleLineHeight) + 2
-        );
+        $singleTitleRowHeight = $hasGroupTitleRow
+            ? max(
+                $singleTitleRowMinHeight,
+                ($titlePadding * 2) + ($maxGroupTitleLineCount * $titleLineHeight) + 2
+            )
+            : 0;
 
         $maxSubHeaderLineCount = 1;
         $indexHeaderLines = [];
@@ -993,7 +1277,7 @@ class ReportPdfGenerator
         }
 
         $nameHeaderLines = $this->wrapText(
-            'Name',
+            $this->primaryRowHeaderLabel($report),
             max(20, $singleTableNameColumnWidth - 8),
             12,
             self::HEADER_ROW_FONT_WEIGHT,
@@ -1282,6 +1566,206 @@ class ReportPdfGenerator
         return $logoBottom;
     }
 
+    /**
+     * @param array<int, array{label: string, tables: array<int, array<string, mixed>>}> $agencySections
+     */
+    private function drawAgencySingleTables(
+        array $context,
+        array $agencySections,
+        float $pageWidth,
+        float $tableTopY,
+        float $tableBlockHeight,
+        float $effectiveBottomTopPadding,
+        float $bottomPadding
+    ): void {
+        $report = $context['report'];
+        $reportDate = $context['reportDate'];
+        $tableWidth = $report['tableWidth'];
+        $tableGap = $report['tableGap'];
+        $pagePadding = 40;
+        $titlePadding = 8;
+        $titleLineHeight = 14;
+        $titleTextBaselineInset = 20;
+        $rowHeight = 24;
+        $footnoteLineHeight = 12;
+        $singleTableNameColumnWidth = (int) ($report['primaryColumnWidth'] ?? 120);
+        $singleTitleRowHeight = ($titlePadding * 2) + $titleLineHeight + 2;
+        $sectionGap = $report['agencyTableGap'];
+        $indexWidth = $report['includeIndexTable'] ? $report['indexTableWidth'] : 0;
+        $leadingWidth = $indexWidth + $singleTableNameColumnWidth;
+        $sectionY = $tableTopY;
+
+        foreach ($agencySections as $sectionIndex => $section) {
+            $sectionTables = $section['tables'];
+            [$orderedRows, $valueMaps, $columnTotals] = $this->buildSingleTableRowData($sectionTables);
+            $rowCount = max(1, count($orderedRows));
+            $metricHeaderLinesByIndex = [];
+            $maxHeaderLineCount = $report['includeIndexTable'] ? 1 : 0;
+            $maxHeaderLineCount = max($maxHeaderLineCount, 1);
+            $metricHeaderWrapWidth = max(20, $tableWidth - 8);
+            foreach ($sectionTables as $index => $table) {
+                $headerLines = $this->singleTableHeaderLines($table, $metricHeaderWrapWidth);
+                $metricHeaderLinesByIndex[$index] = $headerLines;
+                $maxHeaderLineCount = max($maxHeaderLineCount, max(1, count($headerLines)));
+            }
+
+            $headerRowHeight = 8 + ($maxHeaderLineCount * $titleLineHeight);
+            $hasFooterTotals = false;
+            foreach ($sectionTables as $table) {
+                if ($table['includeFooterTotalRow']) {
+                    $hasFooterTotals = true;
+                    break;
+                }
+            }
+
+            $sectionWidth = $leadingWidth + (count($sectionTables) * $tableWidth);
+            $sectionHeight = $singleTitleRowHeight
+                + $headerRowHeight
+                + ($rowHeight * $rowCount)
+                + ($hasFooterTotals ? $rowHeight : 0);
+            $x = max($pagePadding, ($pageWidth - $sectionWidth) / 2);
+            $headerTop = $sectionY + $singleTitleRowHeight;
+            $nameX = $x + $indexWidth;
+
+            $this->fillRect($x, $sectionY, $sectionWidth, $singleTitleRowHeight, self::COLOR_PRIMARY);
+            $this->strokeRect($x, $sectionY, $sectionWidth, $singleTitleRowHeight, self::COLOR_BLACK);
+            $this->drawTextCenter(
+                $section['label'],
+                $x + ($sectionWidth / 2),
+                $sectionY + $titleTextBaselineInset,
+                12,
+                self::HEADER_ROW_FONT_WEIGHT,
+                false,
+                self::COLOR_WHITE
+            );
+
+            if ($report['includeIndexTable']) {
+                $this->drawAgencyHeaderCell($x, $headerTop, $indexWidth, $headerRowHeight, [['text' => 'No', 'italic' => false]], $titleLineHeight);
+            }
+            $this->drawAgencyHeaderCell($nameX, $headerTop, $singleTableNameColumnWidth, $headerRowHeight, [['text' => $this->primaryRowHeaderLabel($report), 'italic' => false]], $titleLineHeight);
+
+            foreach ($sectionTables as $index => $table) {
+                $cellX = $x + $leadingWidth + ($index * $tableWidth);
+                $this->drawAgencyHeaderCell(
+                    $cellX,
+                    $headerTop,
+                    $tableWidth,
+                    $headerRowHeight,
+                    $metricHeaderLinesByIndex[$index] ?? [['text' => '', 'italic' => false]],
+                    $titleLineHeight
+                );
+            }
+
+            foreach ($orderedRows as $rowIndex => $row) {
+                $rowTop = $headerTop + $headerRowHeight + ($rowIndex * $rowHeight);
+                $rowKey = (string) ($row['key'] ?? '');
+                if ($report['includeIndexTable']) {
+                    $this->strokeRect($x, $rowTop, $indexWidth, $rowHeight, self::COLOR_BLACK);
+                    $this->drawTextCenter((string) ($rowIndex + 1), $x + ($indexWidth / 2), $rowTop + 16, 12, 700, false, self::COLOR_TEXT);
+                }
+
+                $this->strokeRect($nameX, $rowTop, $singleTableNameColumnWidth, $rowHeight, self::COLOR_BLACK);
+                $this->drawTextLeft((string) ($row['name'] ?? ''), $nameX + 4, $rowTop + 16, 12, 700, false, self::COLOR_TEXT);
+
+                foreach ($sectionTables as $index => $table) {
+                    $cellX = $x + $leadingWidth + ($index * $tableWidth);
+                    $value = ($valueMaps[(string) ($table['id'] ?? '')][$rowKey] ?? 0.0);
+                    if ($table['highlightMin'] && $value >= $table['minValue']) {
+                        $this->fillRect($cellX, $rowTop, $tableWidth, $rowHeight, self::COLOR_HIT);
+                    }
+                    $this->strokeRect($cellX, $rowTop, $tableWidth, $rowHeight, self::COLOR_BLACK);
+                    $this->drawTextRight(
+                        $this->formatValue($value, $this->formatForMetric($table['metricType'])),
+                        $cellX + $tableWidth - 4,
+                        $rowTop + 16,
+                        12,
+                        700,
+                        false,
+                        self::COLOR_TEXT
+                    );
+                }
+            }
+
+            if ($hasFooterTotals) {
+                $footerTop = $headerTop + $headerRowHeight + ($rowHeight * $rowCount);
+                if ($report['includeIndexTable']) {
+                    $this->fillRect($x, $footerTop, $indexWidth, $rowHeight, self::COLOR_SECONDARY);
+                    $this->strokeRect($x, $footerTop, $indexWidth, $rowHeight, self::COLOR_BLACK);
+                }
+                $this->fillRect($nameX, $footerTop, $singleTableNameColumnWidth, $rowHeight, self::COLOR_SECONDARY);
+                $this->strokeRect($nameX, $footerTop, $singleTableNameColumnWidth, $rowHeight, self::COLOR_BLACK);
+                $this->drawTextLeft('Total', $nameX + 4, $footerTop + 16, 12, 800, false, self::COLOR_WHITE);
+
+                foreach ($sectionTables as $index => $table) {
+                    $cellX = $x + $leadingWidth + ($index * $tableWidth);
+                    $this->fillRect($cellX, $footerTop, $tableWidth, $rowHeight, self::COLOR_SECONDARY);
+                    $this->strokeRect($cellX, $footerTop, $tableWidth, $rowHeight, self::COLOR_BLACK);
+                    if ($table['includeFooterTotalRow']) {
+                        $this->drawTextRight(
+                            $this->formatValue(
+                                $columnTotals[(string) ($table['id'] ?? '')] ?? 0.0,
+                                $this->formatForMetric($table['metricType'])
+                            ),
+                            $cellX + $tableWidth - 4,
+                            $footerTop + 16,
+                            12,
+                            800,
+                            false,
+                            self::COLOR_WHITE
+                        );
+                    }
+                }
+            }
+
+            $sectionY += $sectionHeight + ($sectionIndex < count($agencySections) - 1 ? $sectionGap : 0);
+        }
+
+        $bottomFootnote = $report['bottomFootnote'] !== ''
+            ? $this->applyTemplate($report['bottomFootnote'], $reportDate)
+            : '';
+        if ($bottomFootnote !== '') {
+            $lines = $this->wrapText($bottomFootnote, $pageWidth - ($pagePadding * 2), 12, 400, true);
+            $bottomY = $tableTopY + $tableBlockHeight + $effectiveBottomTopPadding;
+            foreach ($lines as $line) {
+                $this->drawTextCenter($line, $pageWidth / 2, $bottomY, 12, 400, true, self::COLOR_FOOTNOTE);
+                $bottomY += $footnoteLineHeight;
+            }
+            $bottomY += $bottomPadding;
+        }
+    }
+
+    /**
+     * @param array<int, array{text: string, italic: bool}> $lines
+     */
+    private function drawAgencyHeaderCell(
+        float $x,
+        float $y,
+        float $width,
+        float $height,
+        array $lines,
+        float $lineHeight
+    ): void {
+        $this->fillRect($x, $y, $width, $height, self::COLOR_SECONDARY);
+        $this->strokeRect($x, $y, $width, $height, self::COLOR_BLACK);
+        $contentHeight = count($lines) * $lineHeight;
+        $textY = $y + (($height - $contentHeight) / 2) + 10;
+        foreach ($lines as $line) {
+            $text = trim((string) ($line['text'] ?? ''));
+            if ($text !== '') {
+                $this->drawTextCenter(
+                    $text,
+                    $x + ($width / 2),
+                    $textY,
+                    12,
+                    self::HEADER_ROW_FONT_WEIGHT,
+                    (bool) ($line['italic'] ?? false),
+                    self::COLOR_WHITE
+                );
+            }
+            $textY += $lineHeight;
+        }
+    }
+
     private function createCanvas(float $pageWidth, float $pageHeight): void
     {
         $width = max(1, $this->sx($pageWidth));
@@ -1367,17 +1851,24 @@ class ReportPdfGenerator
     /**
      * @return array{0: float, 1: float}
      */
-    private function stabilizePageAspectRatio(float $width, float $height, int $pagePadding): array
+    private function stabilizePageAspectRatio(
+        float $width,
+        float $height,
+        int $pagePadding,
+        bool $enforceMinimumWidth = true
+    ): array
     {
         $safeWidth = max(1.0, $width);
         $safeHeight = max(1.0, $height);
 
-        $minimumWidth = (float) max(
-            ($pagePadding * 2) + 1,
-            ceil($safeHeight * self::MIN_PAGE_ASPECT_RATIO)
-        );
-        if ($safeWidth < $minimumWidth) {
-            $safeWidth = $minimumWidth;
+        if ($enforceMinimumWidth) {
+            $minimumWidth = (float) max(
+                ($pagePadding * 2) + 1,
+                ceil($safeHeight * self::MIN_PAGE_ASPECT_RATIO)
+            );
+            if ($safeWidth < $minimumWidth) {
+                $safeWidth = $minimumWidth;
+            }
         }
 
         $maximumWidth = (float) floor($safeHeight * self::MAX_PAGE_ASPECT_RATIO);
@@ -1644,6 +2135,32 @@ class ReportPdfGenerator
             $tables,
             static fn(array $table): bool => ($table['indexOnly'] ?? false) !== true
         ));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $tables
+     * @return array<int, array{label: string, tables: array<int, array<string, mixed>>}>
+     */
+    private function singleTableAgencySections(array $tables): array
+    {
+        $sections = [];
+        foreach ($tables as $table) {
+            $label = trim((string) ($table['agencyGroupLabel'] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $lastIndex = count($sections) - 1;
+            if ($lastIndex >= 0 && $sections[$lastIndex]['label'] === $label) {
+                $sections[$lastIndex]['tables'][] = $table;
+                continue;
+            }
+            $sections[] = [
+                'label' => $label,
+                'tables' => [$table],
+            ];
+        }
+
+        return $sections;
     }
 
     /**

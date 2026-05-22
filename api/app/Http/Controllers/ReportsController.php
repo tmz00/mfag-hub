@@ -103,7 +103,7 @@ class ReportsController extends Controller
     {
         $payload = $request->validate([
             'report' => ['required', 'array'],
-            'tables' => ['required', 'array', 'min:1', 'max:30'],
+            'tables' => ['required', 'array', 'min:1', 'max:200'],
             'reportDate' => ['required', 'date'],
             'reportRangeLabel' => ['required', 'string', 'max:120'],
             'maxRows' => ['nullable', 'integer', 'min:1', 'max:500'],

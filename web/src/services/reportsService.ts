@@ -4,6 +4,10 @@ export const DEFAULT_REPORT_LOGO_PATH = "/api/reports/logo";
 
 export type ReportValueFormat = "currency" | "count" | "number";
 export type RookieFilterMode = "rookies" | "nonRookies" | "all";
+export type ReportLayoutMode =
+  | "separateLeaderboards"
+  | "combinedFsc"
+  | "agencySummary";
 const allowedMetricTypes = [
   "fyc",
   "afyc",
@@ -29,7 +33,10 @@ export type ReportTableLayout = {
   highlightMin?: boolean;
   showIndex?: boolean;
   includeAllAgencies?: boolean;
+  includeAllNonLegacyAgencies?: boolean;
   agencyCodes?: string[];
+  agencyBreakdown?: boolean;
+  agencyGroupLabel?: string;
   includeAllAdvisors?: boolean;
   rookieFilter?: RookieFilterMode;
   rookieYears?: number;
@@ -51,7 +58,12 @@ export type ReportTemplate = {
   tableWidth: number;
   indexTableWidth: number;
   includeIndexTable: boolean;
+  layoutMode?: ReportLayoutMode;
   singleTable?: boolean;
+  primaryColumnHeader?: string;
+  primaryColumnWidth?: number;
+  agencyBreakdown?: boolean;
+  agencyTableGap?: number;
   bottomFootnote?: string;
   tables: ReportTableLayout[];
   updatedBy?: string;
@@ -223,15 +235,27 @@ class ApiReportsService implements ReportsService {
 
     const rawTables = Array.isArray(item.tables) ? item.tables : [];
 
+    const rawLayoutMode = String(item.layoutMode || item.layout_mode || "").trim();
+    const singleTable =
+      typeof item.singleTable === "boolean"
+        ? item.singleTable
+        : typeof item.single_table === "boolean"
+          ? (item.single_table as boolean)
+          : undefined;
+    const layoutMode: ReportLayoutMode =
+      rawLayoutMode === "agencySummary" ||
+      rawLayoutMode === "combinedFsc" ||
+      rawLayoutMode === "separateLeaderboards"
+        ? rawLayoutMode
+        : singleTable
+          ? "combinedFsc"
+          : "separateLeaderboards";
+
     return {
       ...(item as unknown as Omit<ReportTemplate, "id" | "tables">),
       id,
-      singleTable:
-        typeof item.singleTable === "boolean"
-          ? item.singleTable
-          : typeof item.single_table === "boolean"
-            ? (item.single_table as boolean)
-            : undefined,
+      layoutMode,
+      singleTable: layoutMode === "combinedFsc",
       tables: rawTables
         .map((table) => this.parseTable(table))
         .filter((table): table is ReportTableLayout => table !== null),

@@ -368,6 +368,59 @@ class ReportsControllerTest extends TestCase
         $this->assertEqualsWithDelta(460.0, $pageWidth, 0.01);
     }
 
+    public function test_admin_can_render_agency_separated_report_pdf_with_many_sections(): void
+    {
+        $admin = $this->createUser('admin');
+        Sanctum::actingAs($admin);
+        Storage::fake('local');
+
+        $tables = [];
+        for ($i = 1; $i <= 31; $i++) {
+            $tables[] = [
+                'id' => $i,
+                'titleLines' => ['TOP FYC'],
+                'valueLabel' => 'FYC ($)',
+                'agencyGroupLabel' => sprintf('Agency %02d (AG%02d)', $i, $i),
+                'rows' => [
+                    ['key' => sprintf('A%03d', $i), 'name' => sprintf('Advisor %02d', $i), 'value' => $i * 100],
+                ],
+                'showIndex' => false,
+                'highlightMin' => false,
+                'includeFooterTotalRow' => false,
+                'includeAllAdvisors' => true,
+                'rookieFilter' => 'all',
+                'rookieYears' => 2,
+                'metric' => ['type' => 'fyc'],
+            ];
+        }
+
+        $response = $this->postJson('/api/reports/render-pdf', [
+            'filename' => 'agency-separated.pdf',
+            'reportDate' => '2026-02-14T00:00:00.000Z',
+            'reportRangeLabel' => '01 Feb 2026 - 14 Feb 2026',
+            'maxRows' => 1,
+            'report' => [
+                'title' => 'Agency Separated',
+                'tableGap' => 15,
+                'tableWidth' => 170,
+                'indexTableWidth' => 46,
+                'includeIndexTable' => false,
+                'singleTable' => false,
+                'agencyTableGap' => 30,
+                'bottomFootnote' => '',
+            ],
+            'tables' => $tables,
+        ]);
+
+        $response->assertOk();
+        $content = (string) $response->getContent();
+        $this->assertStringStartsWith('%PDF-', $content);
+
+        $matched = preg_match('/\/MediaBox \[0 0 ([0-9.]+) ([0-9.]+)\]/', $content, $matches);
+        $this->assertSame(1, $matched);
+        $this->assertLessThan(500.0, (float) ($matches[1] ?? 0));
+    }
+
     public function test_render_report_pdf_requires_required_payload_fields(): void
     {
         $admin = $this->createUser('admin');
