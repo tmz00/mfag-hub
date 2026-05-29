@@ -21,8 +21,6 @@ import {
   TbOutlineX,
   TbOutlineTrash,
   TbOutlinePencil,
-  TbOutlineUsers,
-  TbOutlineUser,
 } from "solid-icons/tb";
 import {
   AccordionCard,
@@ -103,6 +101,8 @@ interface MonthOption {
 // Module-level state
 const [userFscCode, setUserFscCode] = createSignal<string | null>(null);
 const [isAdmin, setIsAdmin] = createSignal(false);
+const [canViewTeamClosings, setCanViewTeamClosings] = createSignal(false);
+const [teamFscCodes, setTeamFscCodes] = createSignal<Set<string>>(new Set());
 
 // Helper functions
 
@@ -379,6 +379,15 @@ const Closings: Component = () => {
   const filteredClosings = createMemo(() => {
     const allClosings = closings() ?? [];
     if (filterMode() === "all") return allClosings;
+    if (filterMode() === "team") {
+      const codes = teamFscCodes();
+      if (codes.size === 0) return [];
+      return allClosings.filter(
+        (closing) =>
+          codes.has(closing.fscCode) ||
+          Boolean(closing.sharedFscCode && codes.has(closing.sharedFscCode)),
+      );
+    }
     const fscCode = userFscCode();
     if (!fscCode) return [];
     return allClosings.filter(
@@ -576,7 +585,9 @@ const Closings: Component = () => {
     }
     if (prev === mode || !contentRef) return;
 
-    const direction = prev === "all" && mode === "mine" ? 1 : -1;
+    const filterOrder: FilterMode[] = ["all", "team", "mine"];
+    const direction =
+      filterOrder.indexOf(prev) < filterOrder.indexOf(mode) ? 1 : -1;
     contentRef.animate(
       [
         { transform: `translateX(${direction * 18}px)`, opacity: 0.82 },
@@ -624,9 +635,28 @@ const Closings: Component = () => {
         const fscCode = await teamService.getUserFscCode(user.uid);
         setUserFscCode(fscCode);
 
+        const profile = await teamService.getUserProfile(user.uid);
         const { isAdmin: adminStatus } =
           await teamService.getCurrentUserAccessLevel();
+        const canViewTeam = adminStatus;
+
         setIsAdmin(adminStatus);
+        setCanViewTeamClosings(canViewTeam);
+
+        if (canViewTeam && profile?.agencyCode) {
+          const teamData = await teamService.getTeamData();
+          setTeamFscCodes(
+            new Set(
+              teamData.users
+                .filter((member) => member.agencyCode === profile.agencyCode)
+                .map((member) => String(member.fscCode || "").trim())
+                .filter(Boolean),
+            ),
+          );
+        } else {
+          setTeamFscCodes(new Set());
+          if (filterMode() === "team") setFilterMode("all");
+        }
       } catch (e) {
         console.error("Failed to load user info", e);
       }
@@ -752,14 +782,22 @@ const _FilterTabs: Component = () => {
   });
   let tabsRef: HTMLDivElement | undefined;
   let allRef: HTMLButtonElement | undefined;
+  let teamRef: HTMLButtonElement | undefined;
   let mineRef: HTMLButtonElement | undefined;
 
   const updateIndicator = () => {
     if (!tabsRef) return;
-    const active = filterMode() === "all" ? allRef : mineRef;
+    const active =
+      filterMode() === "all"
+        ? allRef
+        : filterMode() === "team"
+          ? teamRef
+          : mineRef;
     if (!active) return;
+    const activeLabel =
+      active.querySelector<HTMLElement>("[data-filter-tab-label]");
     const parentRect = tabsRef.getBoundingClientRect();
-    const activeRect = active.getBoundingClientRect();
+    const activeRect = (activeLabel || active).getBoundingClientRect();
     setIndicatorStyle({
       left: activeRect.left - parentRect.left,
       width: activeRect.width,
@@ -768,6 +806,8 @@ const _FilterTabs: Component = () => {
 
   createEffect(() => {
     filterMode();
+    canViewTeamClosings();
+    teamFscCodes().size;
     requestAnimationFrame(updateIndicator);
   });
 
@@ -792,9 +832,22 @@ const _FilterTabs: Component = () => {
         }`}
         onClick={() => setFilterMode("all")}
       >
-        <TbOutlineUsers class="h-4 w-4" />
-        All Closings
+        <span data-filter-tab-label>All Closings</span>
       </button>
+      <Show when={canViewTeamClosings() && teamFscCodes().size > 0}>
+        <button
+          ref={teamRef}
+          type="button"
+          class={`relative flex flex-1 items-center justify-center gap-2 pb-3 text-lg font-condensed font-semibold transition ${
+            filterMode() === "team"
+              ? "text-primary"
+              : "text-gray-500 font-light hover:text-gray-700 cursor-pointer"
+          }`}
+          onClick={() => setFilterMode("team")}
+        >
+          <span data-filter-tab-label>Team Closings</span>
+        </button>
+      </Show>
       <button
         ref={mineRef}
         type="button"
@@ -805,8 +858,7 @@ const _FilterTabs: Component = () => {
         }`}
         onClick={() => setFilterMode("mine")}
       >
-        <TbOutlineUser class="h-4 w-4" />
-        My Closings
+        <span data-filter-tab-label>My Closings</span>
       </button>
       <span
         class="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-primary transition-all duration-250 ease-out"
@@ -957,6 +1009,8 @@ const _ClosingsList: Component<{
           <p class="text-base text-gray-600">
             {filterMode() === "mine"
               ? `You have no closings for ${getSelectedPeriodLabel()}.`
+              : filterMode() === "team"
+                ? `Your team has no closings for ${getSelectedPeriodLabel()}.`
               : `No closings for ${getSelectedPeriodLabel()}.`}
           </p>
         </div>

@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 
-export type FilterMode = "all" | "mine";
+export type FilterMode = "all" | "team" | "mine";
 
 export const DEFAULT_CLOSINGS_PERIOD = "today";
 export const DEFAULT_CLOSINGS_FILTER_MODE: FilterMode = "all";

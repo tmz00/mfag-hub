@@ -1667,7 +1667,7 @@ describe("GenerateReports admin page", () => {
     ]);
   });
 
-  it("does not halve shared values when only one adviser matches the table", async () => {
+  it("halves shared values even when only one adviser matches the table", async () => {
     getTeamDataMock.mockResolvedValueOnce({
       users: [
         {
@@ -1755,7 +1755,98 @@ describe("GenerateReports admin page", () => {
       tables: Array<{ rows: Array<{ value: number }> }>;
     };
 
-    expect(renderArgs.tables[0]?.rows[0]?.value).toBe(1);
+    expect(renderArgs.tables[0]?.rows[0]?.value).toBe(0.5);
+  });
+
+  it("halves shared FYC in rookie-only tables", async () => {
+    getTeamDataMock.mockResolvedValueOnce({
+      users: [
+        {
+          fscCode: "A123",
+          nickname: "Alex Tan",
+          agencyCode: "AG01",
+          contractYear: 2025,
+        },
+        {
+          fscCode: "B456",
+          nickname: "Blair Lee",
+          agencyCode: "AG01",
+          contractYear: 2023,
+        },
+      ],
+      agencies: [],
+    });
+    getReportsMock.mockResolvedValueOnce([
+      {
+        id: 1,
+        title: "Rookie FYC Report",
+        filenameTemplate: "{YYYYMMDD}_RookieFyc",
+        tableGap: 15,
+        tableWidth: 170,
+        indexTableWidth: 46,
+        includeIndexTable: false,
+        bottomFootnote: "",
+        tables: [
+          {
+            id: 10,
+            titleLines: ["ROOKIE FYC"],
+            valueLabel: "FYC",
+            highlightMin: false,
+            includeAllAgencies: true,
+            includeAllAdvisors: false,
+            rookieFilter: "rookies",
+            rookieYears: 2,
+            metric: { type: "fyc" },
+          },
+        ],
+      },
+    ]);
+    getClosingsMock.mockResolvedValueOnce([
+      {
+        id: "closing-1",
+        timestamp: "2026-02-10T09:00:00.000Z",
+        fscCode: "A123",
+        fscName: "Alex Tan",
+        isShared: true,
+        sharedFscCode: "B456",
+        sharedFscName: "Blair Lee",
+        sourceId: "warm",
+        sourceLabel: "Warm",
+        referrals: 0,
+        items: [
+          {
+            productId: "P1",
+            fullName: "Alpha Protect",
+            shortName: "Alpha",
+            type: "protection",
+            fycRate: 50,
+            gst: 0,
+            quantitiesAndPremiums: [{ quantity: 1, premium: 1000, frequency: "Annual" }],
+            riders: [],
+          },
+        ],
+      },
+    ]);
+
+    await renderExtractReports();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate Reports" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("20260214_RookieFyc.pdf")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTitle("Download report"));
+
+    await vi.waitFor(() => {
+      expect(generateReportPdfMock).toHaveBeenCalledTimes(1);
+    });
+
+    const renderArgs = generateReportPdfMock.mock.calls[0]?.[0] as {
+      tables: Array<{ rows: Array<{ value: number }> }>;
+    };
+
+    expect(renderArgs.tables[0]?.rows[0]?.value).toBe(250);
   });
 
   it("shows the empty-state message when API returns no report layouts", async () => {

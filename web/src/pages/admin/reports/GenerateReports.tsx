@@ -16,15 +16,12 @@ import {
   type ClosingProduct,
 } from "../../../services/closingsService";
 import {
-  annualizePremium,
   calculateProductSelfFyc,
+  calculateProductSelfFyp,
+  calculateProductSelfAfyp,
+  calculateProductSelfAfyc,
   calculateClosingFyc,
-  calculateProductFyp,
-  calculateClosingFyp,
-  calculateProductAfyp,
   calculateClosingAfyp,
-  calculateProductAfyc,
-  calculateClosingAfyc,
 } from "../../../utils/closingMetrics";
 import {
   teamService,
@@ -1067,73 +1064,6 @@ function parseProductKeywords(value?: string): string[] {
     .filter(Boolean);
 }
 
-function calculateProductSelfFyp(product: ClosingProduct): number {
-  if (product.countsTowardProduction === "N") {
-    return 0;
-  }
-
-  const gst = product.gst || 0;
-  let total = 0;
-  for (const qp of product.quantitiesAndPremiums || []) {
-    let annualized = annualizePremium(qp.premium, qp.frequency);
-    if (annualized == null) continue;
-    if (gst > 0) {
-      annualized /= 1 + gst / 100;
-    }
-    total += annualized * qp.quantity;
-  }
-
-  return total;
-}
-
-function calculateProductSelfAfyp(
-  product: ClosingProduct,
-  fypMultiplierOverride?: number,
-): number {
-  if (product.countsTowardProduction === "N") {
-    return 0;
-  }
-
-  const isSingle = product.type?.toLowerCase() === "single";
-  const fypMultiplier = fypMultiplierOverride ?? (isSingle ? 0.1 : 1);
-  const gst = product.gst || 0;
-  let total = 0;
-  for (const qp of product.quantitiesAndPremiums || []) {
-    let annualized = annualizePremium(qp.premium, qp.frequency);
-    if (gst > 0) {
-      annualized /= 1 + gst / 100;
-    }
-    total += annualized * qp.quantity * fypMultiplier;
-  }
-
-  return total;
-}
-
-function calculateProductSelfAfyc(
-  product: ClosingProduct,
-  fypMultiplierOverride?: number,
-): number {
-  if (product.countsTowardProduction === "N") {
-    return 0;
-  }
-
-  const isSingle = product.type?.toLowerCase() === "single";
-  const fypMultiplier = fypMultiplierOverride ?? (isSingle ? 0.1 : 1);
-  const gst = product.gst || 0;
-  const rate = product.fycRate || 0;
-  let total = 0;
-  for (const qp of product.quantitiesAndPremiums || []) {
-    let annualized = annualizePremium(qp.premium, qp.frequency);
-    if (annualized == null) continue;
-    if (gst > 0) {
-      annualized /= 1 + gst / 100;
-    }
-    total += annualized * qp.quantity * fypMultiplier * rate;
-  }
-
-  return total;
-}
-
 function calculateFilteredProductMetrics(
   items: ClosingProduct[],
   selectedProductTypeKeys: Set<string>,
@@ -1153,12 +1083,14 @@ function calculateFilteredProductMetrics(
     product: ClosingProduct,
     inheritedFypMultiplier?: number,
     inheritedTypeKey?: string,
+    inheritedFycRate?: number,
   ) => {
     const ownTypeKey = (product.type || "").trim();
     const effectiveTypeKey = inheritedTypeKey || ownTypeKey;
     const effectiveFypMultiplier =
       inheritedFypMultiplier ??
       (product.type?.toLowerCase() === "single" ? 0.1 : 1);
+    const effectiveFycRate = product.fycRate || inheritedFycRate || 0;
     const matchesType =
       selectedProductTypeKeys.size === 0 ||
       (effectiveTypeKey !== "" && selectedProductTypeKeys.has(effectiveTypeKey));
@@ -1194,16 +1126,28 @@ function calculateFilteredProductMetrics(
       totals.fyc += calculateProductSelfFyc(product);
       totals.fyp += calculateProductSelfFyp(product);
       totals.afyp += calculateProductSelfAfyp(product, effectiveFypMultiplier);
-      totals.afyc += calculateProductSelfAfyc(product, effectiveFypMultiplier);
+      totals.afyc += calculateProductSelfAfyc(
+        product,
+        effectiveFypMultiplier,
+        effectiveFycRate,
+      );
     }
 
     (product.riders || []).forEach((rider) =>
-      visit(rider, effectiveFypMultiplier, effectiveTypeKey),
+      visit(rider, effectiveFypMultiplier, effectiveTypeKey, effectiveFycRate),
     );
   };
 
   (items || []).forEach((product) => visit(product));
   return totals;
+}
+
+function calculateSharedMetricShare(
+  value: number,
+  hasShared: boolean,
+  hasSharedRecipient: boolean,
+): number {
+  return hasShared && hasSharedRecipient ? value / 2 : value;
 }
 
 function closingMatchesSourceFilters(
@@ -1691,8 +1635,11 @@ const Reports: Component = () => {
           return;
         }
 
-        const sharedValue =
-          hasShared && recipientCount > 1 ? value / recipientCount : value;
+        const sharedValue = calculateSharedMetricShare(
+          value,
+          hasShared,
+          Boolean(sharedKey),
+        );
 
         if (primaryIncluded) {
           addValue(map, primaryKey, primaryName, sharedValue);
@@ -1800,7 +1747,11 @@ const Reports: Component = () => {
         }
 
         if (recipients.length === 0) return;
-        const sharedValue = value / recipients.length;
+        const sharedValue = calculateSharedMetricShare(
+          value,
+          hasShared,
+          Boolean(sharedAgencyCode && sharedAgencyCode !== primaryAgencyCode),
+        );
         recipients.forEach((recipient) =>
           addValue(map, recipient.code, recipient.name, sharedValue),
         );

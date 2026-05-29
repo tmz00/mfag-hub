@@ -662,7 +662,7 @@ describe("SubmitClosing", () => {
 
   it("resets the closing list view state to today and all", () => {
     setSelectedPeriod("2026-02");
-    setFilterMode("mine");
+    setFilterMode("team");
 
     resetClosingsListView();
 
