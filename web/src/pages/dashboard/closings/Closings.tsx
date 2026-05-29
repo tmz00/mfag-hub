@@ -98,6 +98,10 @@ interface MonthOption {
   label: string;
 }
 
+const MFAG_HUB_LAUNCH_DATE = new Date(2026, 2, 1);
+const PRE_LAUNCH_AFYP_MESSAGE =
+  "Closings before launch of MFAG Hub on 1 Mar 2026 do not have AFYP stats.";
+
 // Module-level state
 const [userFscCode, setUserFscCode] = createSignal<string | null>(null);
 const [isAdmin, setIsAdmin] = createSignal(false);
@@ -196,6 +200,10 @@ function calculateClosingAfyp(items: ClosingProduct[]): number {
 // Check if any item has type (needed for accurate AFYP calculation)
 function hasClassification(items: ClosingProduct[]): boolean {
   return items.some((item) => !!item.type);
+}
+
+function isBeforeMfagHubLaunch(value: Date): boolean {
+  return value.getTime() < MFAG_HUB_LAUNCH_DATE.getTime();
 }
 
 function toClosingDisplayModel(
@@ -401,6 +409,13 @@ const Closings: Component = () => {
         sum + countInvalidPremiumFrequencyRows(closing.items || []),
       0,
     ),
+  );
+  const hasPreLaunchMissingPremiumModeData = createMemo(
+    () =>
+      invalidFrequencyRowCount() > 0 &&
+      filteredClosings().some((closing) =>
+        isBeforeMfagHubLaunch(new Date(closing.timestamp)),
+      ),
   );
 
   const handleRefresh = async () => {
@@ -723,9 +738,11 @@ const Closings: Component = () => {
                 >
                   <Show when={invalidFrequencyRowCount() > 0}>
                     <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
-                      Excluded {invalidFrequencyRowCount()} premium row
-                      {invalidFrequencyRowCount() === 1 ? "" : "s"} with missing
-                      or invalid frequency from AFYP totals.
+                      {hasPreLaunchMissingPremiumModeData()
+                        ? PRE_LAUNCH_AFYP_MESSAGE
+                        : `Excluded ${invalidFrequencyRowCount()} premium row${
+                            invalidFrequencyRowCount() === 1 ? "" : "s"
+                          } with missing or invalid frequency from AFYP totals.`}
                     </div>
                   </Show>
 
