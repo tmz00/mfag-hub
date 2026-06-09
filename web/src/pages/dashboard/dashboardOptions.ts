@@ -6,6 +6,7 @@ import {
   TbOutlineScale,
   TbOutlineHourglass,
   TbOutlinePlant,
+  TbOutlineQrcode,
   TbOutlineCrosshair,
   TbOutlineBell,
   TbOutlineShield,
@@ -74,6 +75,12 @@ export const dashboardOptions: Record<string, DashboardOption> = {
     description: "Visualise the power of compound growth",
     icon: TbOutlinePlant,
     href: "/tools/compound-effect",
+  },
+  reviewQr: {
+    title: "Review QR",
+    description: "Show QR code for MFAGroup Google review",
+    icon: TbOutlineQrcode,
+    href: "/tools/review",
   },
   persistency: {
     title: "Persistency",

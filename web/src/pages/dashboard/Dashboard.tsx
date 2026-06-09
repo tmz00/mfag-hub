@@ -63,6 +63,7 @@ const Dashboard: Component = () => {
     "bmi",
     "delayTax",
     "compoundEffect",
+    "reviewQr",
   ] as const;
   const quickAccessKeys = ["closings", "team", "products", "admin"] as const;
   const visibleToolKeys = () => toolKeys;

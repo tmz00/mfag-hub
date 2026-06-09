@@ -63,6 +63,7 @@ const CompoundEffect = lazy(
   () => import("./pages/dashboard/tools/CompoundEffect"),
 );
 const DelayTax = lazy(() => import("./pages/dashboard/tools/DelayTax"));
+const ReviewQR = lazy(() => import("./pages/dashboard/tools/ReviewQR"));
 const ManageTeam = lazy(() => import("./pages/admin/team/ManageTeam"));
 const SubmitClosing = lazy(
   () => import("./pages/dashboard/closings/SubmitClosing/SubmitClosing"),
@@ -956,6 +957,16 @@ const App: Component = () => {
               <Suspense fallback={<RouteLoadingFallback />}>
                 <Persistency />
               </Suspense>
+            )}
+          />
+          <Route
+            path="/tools/review"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <ReviewQR />
+                </Suspense>
+              </Protected>
             )}
           />
           <Route
