@@ -56,16 +56,34 @@ const getHandbookSearchHref = () => {
 export const getToolsGridColumnsClass = (toolCount: number) =>
   toolCount % 2 === 0 ? "lg:grid-cols-2" : "lg:grid-cols-3";
 
+type NewBadgeKey = "attendance" | "reviewQr";
+
+const newBadgeStorageKeys: Record<NewBadgeKey, string> = {
+  attendance: "mfag-hub:new-badge:attendance",
+  reviewQr: "mfag-hub:new-badge:review-qr",
+};
+
+const hasSeenNewBadge = (key: NewBadgeKey) => {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(newBadgeStorageKeys[key]) === "1";
+};
+
 const Dashboard: Component = () => {
   const navigate = useNavigate();
 
   const toolKeys = [
     "bmi",
+    "reviewQr",
     "delayTax",
     "compoundEffect",
-    "reviewQr",
   ] as const;
-  const quickAccessKeys = ["closings", "team", "products", "admin"] as const;
+  const quickAccessKeys = [
+    "closings",
+    "team",
+    "products",
+    "attendance",
+    "admin",
+  ] as const;
   const visibleToolKeys = () => toolKeys;
 
   const [handbookCategories, setHandbookCategories] = createSignal<
@@ -78,6 +96,17 @@ const Dashboard: Component = () => {
   >(null);
   const [canAccessAdmin, setCanAccessAdmin] = createSignal(false);
   const [unreadNotifications, setUnreadNotifications] = createSignal(0);
+  const [seenNewBadges, setSeenNewBadges] = createSignal<
+    Record<NewBadgeKey, boolean>
+  >({
+    attendance: hasSeenNewBadge("attendance"),
+    reviewQr: hasSeenNewBadge("reviewQr"),
+  });
+
+  const markNewBadgeSeen = (key: NewBadgeKey) => {
+    window.localStorage.setItem(newBadgeStorageKeys[key], "1");
+    setSeenNewBadges((current) => ({ ...current, [key]: true }));
+  };
 
   onMount(() => {
     if (hasDashboardScrollY) {
@@ -243,7 +272,9 @@ const Dashboard: Component = () => {
       <PageBody>
         <div class="space-y-10">
           {/* Quick Access */}
-          <div class="flex items-center justify-center gap-3 xs:gap-4 sm:gap-12 md:gap-16">
+          <div
+            class="grid w-full grid-cols-3 gap-x-2 gap-y-5 min-[460px]:grid-cols-4 sm:flex sm:w-auto sm:items-center sm:justify-center sm:gap-12 md:gap-16"
+          >
             <For each={quickAccessKeys}>
               {(key) => {
                 const option = dashboardOptions[key];
@@ -258,18 +289,31 @@ const Dashboard: Component = () => {
                   <Show when={!isAdminOption || canAccessAdmin()}>
                     <A
                       href={option.href}
-                      class="group flex flex-col items-center gap-3 transition-all active:scale-95"
+                      onClick={() => {
+                        if (key === "attendance") markNewBadgeSeen("attendance");
+                      }}
+                      class="group relative flex w-full min-w-0 flex-col items-center justify-center gap-1 rounded-md px-0.5 py-2 transition-all active:scale-95 sm:w-auto sm:gap-3 sm:rounded-none sm:p-0"
                     >
+                      <Show
+                        when={
+                          key === "attendance" &&
+                          !seenNewBadges().attendance
+                        }
+                      >
+                        <span class="absolute right-0 top-0 rounded-full bg-amber-400 px-1.5 py-0.5 text-[0.6rem] font-bold uppercase leading-none text-amber-950 shadow-sm ring-1 ring-amber-500/30 sm:-right-3 sm:-top-2">
+                          NEW
+                        </span>
+                      </Show>
                       <div
-                        class={`flex h-13 w-13 items-center justify-center rounded-full bg-linear-to-br ${gradient} shadow-lg transition-all group-hover:scale-110 group-hover:shadow-xl sm:h-16 sm:w-16`}
+                        class={`flex h-11 w-11 items-center justify-center rounded-full bg-linear-to-br ${gradient} shadow-md transition-all group-hover:scale-110 group-hover:shadow-xl xs:h-12 xs:w-12 sm:h-16 sm:w-16 sm:shadow-lg`}
                       >
                         <Dynamic
                           component={option.icon}
-                          class="h-7 w-7 text-white"
+                          class="h-6 w-6 text-white sm:h-7 sm:w-7"
                         />
                       </div>
                       <h3
-                        class={`font-condensed font-semibold text-lg ${hoverText}`}
+                        class={`max-w-full truncate text-center font-condensed text-base font-semibold xs:text-lg ${hoverText}`}
                       >
                         {option.title}
                       </h3>
@@ -296,8 +340,18 @@ const Dashboard: Component = () => {
                   return (
                     <A
                       href={tool.href}
+                      onClick={() => {
+                        if (key === "reviewQr") markNewBadgeSeen("reviewQr");
+                      }}
                       class="group relative flex h-full items-center overflow-hidden rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:border-transparent hover:shadow-md active:scale-[0.98]"
                     >
+                      <Show
+                        when={key === "reviewQr" && !seenNewBadges().reviewQr}
+                      >
+                        <span class="absolute right-2 top-2 rounded-full bg-amber-400 px-2 py-0.5 text-[0.65rem] font-bold uppercase leading-none text-amber-950 shadow-sm ring-1 ring-amber-500/30">
+                          NEW
+                        </span>
+                      </Show>
                       <div class="absolute left-0 top-0 h-full w-1 bg-linear-to-b from-primary to-secondary transition-all group-hover:w-1.5"></div>
 
                       <div class="flex w-full items-center gap-3">
@@ -307,7 +361,7 @@ const Dashboard: Component = () => {
                             class="h-6 w-6 text-white"
                           />
                         </div>
-                        <div class="min-w-0 flex-1">
+                        <div class="min-w-0 flex-1 pr-10">
                           <h3 class="font-condensed font-semibold text-lg group-hover:text-primary">
                             {tool.title}
                           </h3>

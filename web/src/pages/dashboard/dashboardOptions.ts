@@ -4,9 +4,9 @@ import {
   TbOutlinePackage,
   TbOutlineSettings,
   TbOutlineScale,
+  TbOutlineCalendarCheck,
   TbOutlineHourglass,
   TbOutlinePlant,
-  TbOutlineQrcode,
   TbOutlineCrosshair,
   TbOutlineBell,
   TbOutlineShield,
@@ -46,6 +46,12 @@ export const dashboardOptions: Record<string, DashboardOption> = {
     icon: TbOutlineBell,
     href: "/notifications",
   },
+  attendance: {
+    title: "Attendance",
+    description: "Scan meeting QR and view history",
+    icon: TbOutlineCalendarCheck,
+    href: "/attendance",
+  },
   settings: {
     title: "Settings",
     description: "Update your preferences",
@@ -79,7 +85,7 @@ export const dashboardOptions: Record<string, DashboardOption> = {
   reviewQr: {
     title: "Review QR",
     description: "Show QR code for MFAGroup Google review",
-    icon: TbOutlineQrcode,
+    icon: TbOutlineShield,
     href: "/tools/review",
   },
   persistency: {

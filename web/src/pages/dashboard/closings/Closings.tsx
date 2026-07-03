@@ -849,7 +849,7 @@ const _FilterTabs: Component = () => {
         }`}
         onClick={() => setFilterMode("all")}
       >
-        <span data-filter-tab-label>All Closings</span>
+        <span data-filter-tab-label>District</span>
       </button>
       <Show when={canViewTeamClosings() && teamFscCodes().size > 0}>
         <button
@@ -862,7 +862,7 @@ const _FilterTabs: Component = () => {
           }`}
           onClick={() => setFilterMode("team")}
         >
-          <span data-filter-tab-label>Team Closings</span>
+          <span data-filter-tab-label>Agency</span>
         </button>
       </Show>
       <button
@@ -875,7 +875,7 @@ const _FilterTabs: Component = () => {
         }`}
         onClick={() => setFilterMode("mine")}
       >
-        <span data-filter-tab-label>My Closings</span>
+        <span data-filter-tab-label>Self</span>
       </button>
       <span
         class="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-primary transition-all duration-250 ease-out"
@@ -1027,7 +1027,7 @@ const _ClosingsList: Component<{
             {filterMode() === "mine"
               ? `You have no closings for ${getSelectedPeriodLabel()}.`
               : filterMode() === "team"
-                ? `Your team has no closings for ${getSelectedPeriodLabel()}.`
+                ? `Your agency has no closings for ${getSelectedPeriodLabel()}.`
               : `No closings for ${getSelectedPeriodLabel()}.`}
           </p>
         </div>

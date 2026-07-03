@@ -145,11 +145,12 @@ describe("Admin page", () => {
 
     expect(screen.getByText("Manage Report Templates")).toBeTruthy();
     expect(screen.getByText("Manage Notifications")).toBeTruthy();
+    expect(screen.getByText("Meeting Attendance")).toBeTruthy();
     expect(screen.getByText("Manage Closing Sources")).toBeTruthy();
     expect(screen.getByText("Manage Products")).toBeTruthy();
     expect(screen.getByText("Manage Team")).toBeTruthy();
     expect(screen.getByText("Manage Handbook")).toBeTruthy();
     expect(screen.getByText("Manage Backups")).toBeTruthy();
-    expect(screen.getAllByRole("link")).toHaveLength(8);
+    expect(screen.getAllByRole("link")).toHaveLength(9);
   });
 });

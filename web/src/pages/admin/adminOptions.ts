@@ -51,6 +51,12 @@ export const adminOptionLinks: Record<string, AdminOption> = {
     icon: TbOutlineBell,
     href: "/admin/notifications",
   },
+  attendance: {
+    title: "Meeting Attendance",
+    description: "Create meeting QR codes and track FSC attendance",
+    icon: TbOutlineUsers,
+    href: "/admin/attendance",
+  },
   sources: {
     title: "Manage Closing Sources",
     description: "Configure sources (e.g. roadshow names) for closings",

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\OtpAuthController;
 use App\Http\Controllers\AdminBackupController;
 use App\Http\Controllers\AgencyController;
+use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\ClosingsController;
 use App\Http\Controllers\Handbook\HandbookContentController;
 use App\Http\Controllers\Handbook\HandbookFileController;
@@ -61,8 +62,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::put('/notifications/read-state/{userId}', [NotificationController::class, 'markRead'])->whereNumber('userId');
     Route::get('/notifications/unread-count/{userId}', [NotificationController::class, 'unreadCount'])->whereNumber('userId');
     Route::put('/team/users/{id}', [TeamUserController::class, 'update'])->whereNumber('id');
+    Route::get('/attendance/history', [AttendanceController::class, 'myHistory']);
+    Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
 
     Route::middleware('role:admin')->group(function (): void {
+        Route::get('/attendance/admin/meetings', [AttendanceController::class, 'adminIndex']);
+        Route::post('/attendance/admin/meetings', [AttendanceController::class, 'store']);
+        Route::get('/attendance/admin/meetings/{id}', [AttendanceController::class, 'adminShow'])->whereNumber('id');
+        Route::put('/attendance/admin/meetings/{meetingId}/mark', [AttendanceController::class, 'mark'])->whereNumber('meetingId');
         Route::get('/closings/months/{monthKey}/data', [ClosingsController::class, 'monthData'])
             ->where('monthKey', '[0-9]{6}');
         Route::put('/closings/months/{monthKey}/data', [ClosingsController::class, 'replaceMonthData'])

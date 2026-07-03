@@ -86,6 +86,12 @@ const NotificationDetail = lazy(
 const ManageNotifications = lazy(
   () => import("./pages/admin/notifications/ManageNotifications"),
 );
+const ManageAttendance = lazy(
+  () => import("./pages/admin/attendance/ManageAttendance"),
+);
+const Attendance = lazy(
+  () => import("./pages/dashboard/attendance/Attendance"),
+);
 const Backups = lazy(() => import("./pages/admin/backups/ManageBackups"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -903,6 +909,28 @@ const App: Component = () => {
               <Protected>
                 <Suspense fallback={<RouteLoadingFallback />}>
                   <ManageNotifications />
+                </Suspense>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/attendance"
+            component={() => (
+              <Protected>
+                <AdminAccessGate deniedMessage="Only admins can manage attendance.">
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <ManageAttendance />
+                  </Suspense>
+                </AdminAccessGate>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/attendance"
+            component={() => (
+              <Protected>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Attendance />
                 </Suspense>
               </Protected>
             )}
