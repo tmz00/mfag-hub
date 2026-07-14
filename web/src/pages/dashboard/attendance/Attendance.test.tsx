@@ -135,6 +135,22 @@ describe("Attendance", () => {
     expect(jsQrMock).toHaveBeenCalled();
   });
 
+  it("checks in when the scanned QR contains only a raw token", async () => {
+    class RawTokenDetectorMock {
+      detect = vi.fn().mockResolvedValue([{ rawValue: "raw-token" }]);
+    }
+    Object.defineProperty(window, "BarcodeDetector", {
+      configurable: true,
+      writable: true,
+      value: RawTokenDetectorMock,
+    });
+    render(() => <Attendance />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Scan QR" }));
+
+    await waitFor(() => expect(checkInMock).toHaveBeenCalledWith("raw-token"));
+  });
+
   it("checks in directly when opened with an attendance token link", async () => {
     window.history.pushState({}, "", "/attendance?token=link-token");
 

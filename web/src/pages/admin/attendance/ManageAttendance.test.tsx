@@ -96,7 +96,7 @@ describe("ManageAttendance", () => {
     await waitFor(() => expect(getAdminMeetingMock).toHaveBeenCalledWith("meeting-1"));
     await waitFor(() =>
       expect(toDataUrlMock).toHaveBeenCalledWith(
-        "http://localhost:3000/attendance?token=token-1",
+        "token-1",
         expect.objectContaining({ width: 360 }),
       ),
     );

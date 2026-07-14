@@ -41,12 +41,7 @@ const formatDateTime = (value?: string) => {
   });
 };
 
-const getCheckInValue = (token?: string) => {
-  const clean = String(token || "").trim();
-  if (!clean) return "";
-  if (typeof window === "undefined") return clean;
-  return `${window.location.origin}/attendance?token=${encodeURIComponent(clean)}`;
-};
+const getCheckInValue = (token?: string) => String(token || "").trim();
 
 const statusClass = (status: string) => {
   switch (status) {
