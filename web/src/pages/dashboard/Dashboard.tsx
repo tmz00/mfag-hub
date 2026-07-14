@@ -57,6 +57,7 @@ export const getToolsGridColumnsClass = (toolCount: number) =>
   toolCount % 2 === 0 ? "lg:grid-cols-2" : "lg:grid-cols-3";
 
 type NewBadgeKey = "attendance" | "reviewQr";
+const TEMP_ATTENDANCE_ALLOWED_EMAIL = "tarmizi.bin.ahmad@gmail.com";
 
 const newBadgeStorageKeys: Record<NewBadgeKey, string> = {
   attendance: "mfag-hub:new-badge:attendance",
@@ -130,7 +131,9 @@ const Dashboard: Component = () => {
         return;
       }
       setCanAccessAttendance(
-        String(user.fscCode || authService.getCurrentUser()?.fscCode || "").trim() === "56523",
+        String(user.email || authService.getCurrentUser()?.email || "")
+          .trim()
+          .toLowerCase() === TEMP_ATTENDANCE_ALLOWED_EMAIL,
       );
       loadAdminAccess();
 

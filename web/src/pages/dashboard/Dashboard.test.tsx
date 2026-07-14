@@ -132,7 +132,7 @@ describe("Dashboard page", () => {
     });
     getCurrentUserMock.mockReturnValue({
       uid: "user-1",
-      fscCode: "12345",
+      email: "standard@example.test",
       accessLevel: "standard",
     });
     getHandbookEntriesMock.mockResolvedValue([
@@ -180,14 +180,14 @@ describe("Dashboard page", () => {
     });
   });
 
-  it("temporarily shows attendance quick access only for FSC 56523", async () => {
+  it("temporarily shows attendance quick access only for the allowed email", async () => {
     getCurrentUserMock.mockReturnValue({
-      uid: "user-56523",
-      fscCode: "56523",
+      uid: "user-tarmizi",
+      email: "tarmizi.bin.ahmad@gmail.com",
       accessLevel: "standard",
     });
     onAuthStateChangedMock.mockImplementation((callback: (user: any) => void) => {
-      callback({ uid: "user-56523", fscCode: "56523" });
+      callback({ uid: "user-tarmizi", email: "tarmizi.bin.ahmad@gmail.com" });
       return authUnsubscribeMock;
     });
 
