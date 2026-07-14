@@ -1,7 +1,11 @@
-import { Component } from "solid-js";
+import { Component, Show, createSignal } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { Dynamic } from "solid-js/web";
-import { TbOutlineExternalLink } from "solid-icons/tb";
+import {
+  TbOutlineCheck,
+  TbOutlineCopy,
+  TbOutlineExternalLink,
+} from "solid-icons/tb";
 
 import {
   PageShell,
@@ -15,9 +19,37 @@ const REVIEW_URL = "https://g.page/r/CYIvaKpIQMa7EAE/review";
 
 const ReviewQR: Component = () => {
   const navigate = useNavigate();
+  const [copied, setCopied] = createSignal(false);
+  const [copyError, setCopyError] = createSignal("");
 
   const openReviewPage = () => {
     window.open(REVIEW_URL, "_blank", "noopener,noreferrer");
+  };
+
+  const copyReviewLink = async () => {
+    setCopyError("");
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(REVIEW_URL);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = REVIEW_URL;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyError("Unable to copy link.");
+    }
   };
 
   return (
@@ -47,10 +79,25 @@ const ReviewQR: Component = () => {
             </h2>
           </div>
 
-          <Button variant="primaryOutline" onClick={openReviewPage}>
-            <TbOutlineExternalLink class="h-4 w-4" />
-            Open Review Page
-          </Button>
+          <div class="flex flex-col gap-3 sm:flex-row">
+            <Button variant="primary" onClick={copyReviewLink}>
+              <Show when={copied()} fallback={<TbOutlineCopy class="h-4 w-4" />}>
+                <TbOutlineCheck class="h-4 w-4" />
+              </Show>
+              {copied() ? "Copied" : "Copy Review Link"}
+            </Button>
+
+            <Button variant="primaryOutline" onClick={openReviewPage}>
+              <TbOutlineExternalLink class="h-4 w-4" />
+              Open Review Page
+            </Button>
+          </div>
+
+          <Show when={copyError()}>
+            <p class="text-sm font-medium text-red-600" role="status">
+              {copyError()}
+            </p>
+          </Show>
         </div>
       </PageBody>
     </PageShell>

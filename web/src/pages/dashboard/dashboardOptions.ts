@@ -11,6 +11,7 @@ import {
   TbOutlineShield,
   TbOutlineShieldCheck,
   TbOutlinePercentage,
+  TbOutlineMessageStar,
 } from "solid-icons/tb";
 
 export type DashboardOption = {
@@ -82,9 +83,9 @@ export const dashboardOptions: Record<string, DashboardOption> = {
     href: "/tools/compound-effect",
   },
   reviewQr: {
-    title: "Review QR",
+    title: "Google Review QR",
     description: "Show QR code for MFAGroup Google review",
-    icon: TbOutlineShield,
+    icon: TbOutlineMessageStar,
     href: "/tools/review",
   },
   persistency: {
