@@ -13,6 +13,7 @@ import {
   TbOutlineChevronDown,
   TbOutlinePlus,
   TbOutlineRefresh,
+  TbOutlineTrash,
 } from "solid-icons/tb";
 import { toDataURL } from "qrcode";
 
@@ -83,6 +84,8 @@ const ManageAttendance: Component = () => {
     status: AttendanceStatus;
   } | null>(null);
   const [markingStatus, setMarkingStatus] = createSignal(false);
+  const [pendingDeleteMeeting, setPendingDeleteMeeting] = createSignal<AttendanceMeeting | null>(null);
+  const [deletingMeeting, setDeletingMeeting] = createSignal(false);
 
   const selectedMeeting = () => meetingDetail();
 
@@ -166,6 +169,27 @@ const ManageAttendance: Component = () => {
     }
   };
 
+  const confirmDeleteMeeting = async () => {
+    const meeting = pendingDeleteMeeting();
+    if (!meeting) return;
+
+    setError("");
+    setDeletingMeeting(true);
+    try {
+      await attendanceService.deleteMeeting(meeting.id);
+      setPendingDeleteMeeting(null);
+      setMeetingDetail(null);
+      setAttendance([]);
+      setQrDataUrl("");
+      setSelectedMeetingId("");
+      await refetchMeetings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete meeting");
+    } finally {
+      setDeletingMeeting(false);
+    }
+  };
+
   return (
     <PageShell>
       <PageHeader
@@ -230,8 +254,21 @@ const ManageAttendance: Component = () => {
             {(meeting) => (
               <div class="grid gap-4 lg:grid-cols-[360px_1fr]">
                 <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                  <h2 class="text-lg font-semibold text-gray-900">{meeting().title}</h2>
-                  <div class="mt-1 text-sm text-gray-500">{formatDateTime(meeting().startsAt)}</div>
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 class="text-lg font-semibold text-gray-900">{meeting().title}</h2>
+                      <div class="mt-1 text-sm text-gray-500">{formatDateTime(meeting().startsAt)}</div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setPendingDeleteMeeting(meeting())}
+                    >
+                      <TbOutlineTrash class="h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
                   <Show when={meeting().location}>
                     <div class="mt-1 text-sm text-gray-500">{meeting().location}</div>
                   </Show>
@@ -334,6 +371,24 @@ const ManageAttendance: Component = () => {
         onConfirm={() => void confirmStatusChange()}
         onCancel={() => {
           if (!markingStatus()) setPendingStatusChange(null);
+        }}
+      />
+      <ConfirmModal
+        open={Boolean(pendingDeleteMeeting())}
+        title="Delete Meeting?"
+        message={
+          pendingDeleteMeeting()
+            ? `Delete ${pendingDeleteMeeting()?.title}? This will also delete all attendance records for this meeting.`
+            : ""
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        confirmLoading={deletingMeeting()}
+        confirmLoadingLabel="Deleting..."
+        onConfirm={() => void confirmDeleteMeeting()}
+        onCancel={() => {
+          if (!deletingMeeting()) setPendingDeleteMeeting(null);
         }}
       />
     </PageShell>

@@ -209,6 +209,15 @@ class AttendanceController extends Controller
         return response()->json(['record' => $this->mapRecord($record)]);
     }
 
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $this->assertAdmin($request);
+
+        AttendanceMeeting::query()->findOrFail($id)->delete();
+
+        return response()->json(['deleted' => true]);
+    }
+
     private function resolveStatus(AttendanceMeeting $meeting, Carbon $checkedInAt): string
     {
         return $checkedInAt->greaterThan($meeting->starts_at->copy()->addMinutes(15))

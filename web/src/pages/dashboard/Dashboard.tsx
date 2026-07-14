@@ -95,6 +95,7 @@ const Dashboard: Component = () => {
     number | null
   >(null);
   const [canAccessAdmin, setCanAccessAdmin] = createSignal(false);
+  const [canAccessAttendance, setCanAccessAttendance] = createSignal(false);
   const [unreadNotifications, setUnreadNotifications] = createSignal(0);
   const [seenNewBadges, setSeenNewBadges] = createSignal<
     Record<NewBadgeKey, boolean>
@@ -120,6 +121,7 @@ const Dashboard: Component = () => {
     const unsub = authService.onAuthStateChanged((user) => {
       if (!user) {
         setCanAccessAdmin(false);
+        setCanAccessAttendance(false);
         setUnreadNotifications(0);
         if (unsubNotifications) {
           unsubNotifications();
@@ -127,6 +129,9 @@ const Dashboard: Component = () => {
         }
         return;
       }
+      setCanAccessAttendance(
+        String(user.fscCode || authService.getCurrentUser()?.fscCode || "").trim() === "56523",
+      );
       loadAdminAccess();
 
       // Subscribe to unread notifications count
@@ -279,6 +284,7 @@ const Dashboard: Component = () => {
               {(key) => {
                 const option = dashboardOptions[key];
                 const isAdminOption = key === "admin";
+                const isAttendanceOption = key === "attendance";
                 const gradient = isAdminOption
                   ? "from-admin-from to-admin-to"
                   : "from-primary to-secondary";
@@ -286,7 +292,12 @@ const Dashboard: Component = () => {
                   ? "group-hover:text-admin-from"
                   : "group-hover:text-primary";
                 return (
-                  <Show when={!isAdminOption || canAccessAdmin()}>
+                  <Show
+                    when={
+                      (!isAdminOption || canAccessAdmin()) &&
+                      (!isAttendanceOption || canAccessAttendance())
+                    }
+                  >
                     <A
                       href={option.href}
                       onClick={() => {

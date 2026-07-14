@@ -162,14 +162,14 @@ describe("CreateAttendanceMeeting", () => {
       target: { value: "Auto title test" },
     });
 
-    expect(inputForLabel("Title").value).toBe("Meeting on 03 Jul 2026, at 09:30 AM");
+    expect(inputForLabel("Title").value).toBe("July 2026 District Meeting");
 
     await screen.findByText("10001 · Alice");
     fireEvent.click(screen.getByRole("button", { name: /Create QR Meeting/i }));
 
     await waitFor(() => expect(createMeetingMock).toHaveBeenCalledTimes(1));
     expect(createMeetingMock.mock.calls[0][0]).toMatchObject({
-      title: "Meeting on 03 Jul 2026, at 09:30 AM",
+      title: "July 2026 District Meeting",
       description: "Auto title test",
     });
   });

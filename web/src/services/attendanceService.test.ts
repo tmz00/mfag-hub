@@ -137,4 +137,16 @@ describe("attendanceService", () => {
       { defaultErrorMessage: "Attendance request failed" },
     );
   });
+
+  it("deletes an admin meeting", async () => {
+    authJsonMock.mockResolvedValue({ deleted: true });
+
+    await attendanceService.deleteMeeting("meeting/1");
+
+    expect(authJsonMock).toHaveBeenCalledWith(
+      "/api/attendance/admin/meetings/meeting%2F1",
+      { method: "DELETE" },
+      { defaultErrorMessage: "Attendance request failed" },
+    );
+  });
 });

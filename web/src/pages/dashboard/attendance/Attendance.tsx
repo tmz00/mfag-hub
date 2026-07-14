@@ -5,8 +5,10 @@ import {
   createResource,
   createSignal,
   onCleanup,
+  onMount,
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import jsQR from "jsqr";
 import {
   TbOutlineCalendarCheck,
   TbOutlineCamera,
@@ -24,6 +26,9 @@ const getBarcodeDetector = (): BarcodeDetectorCtor | null => {
   if (typeof window === "undefined") return null;
   return (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector || null;
 };
+
+const hasCameraAccess = () =>
+  typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
 
 const formatDateTime = (value?: string) => {
   if (!value) return "";
@@ -68,10 +73,11 @@ const Attendance: Component = () => {
   const [message, setMessage] = createSignal("");
   const [error, setError] = createSignal("");
   const [scanning, setScanning] = createSignal(false);
-  const [scanSupported] = createSignal(Boolean(getBarcodeDetector()));
+  const [scanSupported] = createSignal(hasCameraAccess());
   let videoRef: HTMLVideoElement | undefined;
   let stream: MediaStream | null = null;
   let scanTimer: number | undefined;
+  let detecting = false;
 
   const stopScan = () => {
     setScanning(false);
@@ -86,6 +92,11 @@ const Attendance: Component = () => {
   };
 
   onCleanup(stopScan);
+
+  onMount(() => {
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (token) void checkIn(token);
+  });
 
   const checkIn = async (raw: string) => {
     const token = extractToken(raw);
@@ -113,37 +124,62 @@ const Attendance: Component = () => {
   };
 
   const startScan = async () => {
-    const Detector = getBarcodeDetector();
-    if (!Detector || !navigator.mediaDevices?.getUserMedia) {
-      setError("QR scanning is not supported on this browser. Use a device or browser with camera QR scanning.");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Camera scanning is not available. Open this page on HTTPS and allow camera access, or scan the QR with your phone camera.");
       return;
     }
 
     setError("");
     setMessage("");
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
       if (videoRef) {
         videoRef.srcObject = stream;
         await videoRef.play();
       }
-      const detector = new Detector({ formats: ["qr_code"] });
+      const Detector = getBarcodeDetector();
+      const detector = Detector ? new Detector({ formats: ["qr_code"] }) : null;
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
       setScanning(true);
       scanTimer = window.setInterval(async () => {
-        if (!videoRef || !context || checkingIn()) return;
+        if (!videoRef || !context || checkingIn() || detecting) return;
         if (videoRef.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-        canvas.width = videoRef.videoWidth;
-        canvas.height = videoRef.videoHeight;
-        context.drawImage(videoRef, 0, 0, canvas.width, canvas.height);
-        const codes = await detector.detect(canvas);
-        const raw = codes[0]?.rawValue;
-        if (raw) {
-          stopScan();
-          await checkIn(raw);
+        detecting = true;
+        try {
+          canvas.width = videoRef.videoWidth;
+          canvas.height = videoRef.videoHeight;
+          context.drawImage(videoRef, 0, 0, canvas.width, canvas.height);
+
+          let raw = "";
+          if (detector) {
+            try {
+              const codes = await detector.detect(canvas);
+              raw = codes[0]?.rawValue || "";
+            } catch {
+              raw = "";
+            }
+          }
+          if (!raw && typeof context.getImageData === "function") {
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            raw = jsQR(imageData.data, imageData.width, imageData.height)?.data || "";
+          }
+          if (raw) {
+            stopScan();
+            await checkIn(raw);
+          }
+        } finally {
+          detecting = false;
         }
       }, 500);
     } catch (err) {
@@ -189,7 +225,7 @@ const Attendance: Component = () => {
 
             <Show when={!scanSupported()}>
               <div class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-                Camera QR scanning is unavailable on this browser. Use a device or browser with camera QR scanning to check in.
+                Camera scanning is unavailable here. Open this page on HTTPS and allow camera access, or scan the QR with your phone camera.
               </div>
             </Show>
           </section>

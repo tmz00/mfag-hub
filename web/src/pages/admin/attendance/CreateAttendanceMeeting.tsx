@@ -17,15 +17,9 @@ const parseLocalDateTime = (dateValue: string, timeValue: string) => {
 };
 
 const formatDefaultTitle = (date: Date) => {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const day = pad(date.getDate());
-  const month = date.toLocaleString("en-SG", { month: "short" });
+  const month = date.toLocaleString("en-SG", { month: "long" });
   const year = date.getFullYear();
-  let hour = date.getHours();
-  const amPm = hour >= 12 ? "PM" : "AM";
-  hour %= 12;
-  if (hour === 0) hour = 12;
-  return `Meeting on ${day} ${month} ${year}, at ${pad(hour)}:${pad(date.getMinutes())} ${amPm}`;
+  return `${month} ${year} District Meeting`;
 };
 
 const CreateAttendanceMeeting: Component = () => {

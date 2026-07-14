@@ -118,4 +118,11 @@ export const attendanceService = {
       },
     );
   },
+
+  async deleteMeeting(meetingId: string): Promise<void> {
+    await requestJson(
+      `/api/attendance/admin/meetings/${encodeURIComponent(meetingId)}`,
+      { method: "DELETE" },
+    );
+  },
 };

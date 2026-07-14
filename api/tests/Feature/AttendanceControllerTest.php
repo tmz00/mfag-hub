@@ -304,6 +304,42 @@ class AttendanceControllerTest extends TestCase
             ->assertJsonPath('attendance.0.markedBy', $admin->full_name);
     }
 
+    public function test_admin_can_delete_meeting_and_its_attendance_records(): void
+    {
+        $admin = $this->createUser('admin', ['fsc_code' => '94501']);
+        $fsc = $this->createUser('standard', [
+            'email' => 'delete-attendance@example.test',
+            'fsc_code' => '14501',
+        ]);
+        Sanctum::actingAs($admin);
+        $meetingId = (int) $this->postJson('/api/attendance/admin/meetings', [
+            'title' => 'Delete Meeting',
+            'startsAt' => '2026-06-09T10:00:00Z',
+            'endsAt' => '2026-06-09T12:00:00Z',
+            'attendeeMode' => 'selected',
+            'attendeeUserIds' => [$fsc->id],
+        ])->assertCreated()->json('meeting.id');
+
+        $this->putJson("/api/attendance/admin/meetings/{$meetingId}/mark", [
+            'userId' => $fsc->id,
+            'status' => 'present',
+        ])->assertOk();
+
+        $this->deleteJson("/api/attendance/admin/meetings/{$meetingId}")
+            ->assertOk()
+            ->assertJson(['deleted' => true]);
+
+        $this->assertDatabaseMissing('attendance_meetings', ['id' => $meetingId]);
+        $this->assertDatabaseMissing('attendance_meeting_users', [
+            'meeting_id' => $meetingId,
+            'user_id' => $fsc->id,
+        ]);
+        $this->assertDatabaseMissing('attendance_records', [
+            'meeting_id' => $meetingId,
+            'user_id' => $fsc->id,
+        ]);
+    }
+
     public function test_admin_manual_override_can_change_scanned_attendance_to_excused(): void
     {
         $admin = $this->createUser('admin', ['fsc_code' => '95001']);

@@ -69,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/attendance/admin/meetings', [AttendanceController::class, 'adminIndex']);
         Route::post('/attendance/admin/meetings', [AttendanceController::class, 'store']);
         Route::get('/attendance/admin/meetings/{id}', [AttendanceController::class, 'adminShow'])->whereNumber('id');
+        Route::delete('/attendance/admin/meetings/{id}', [AttendanceController::class, 'destroy'])->whereNumber('id');
         Route::put('/attendance/admin/meetings/{meetingId}/mark', [AttendanceController::class, 'mark'])->whereNumber('meetingId');
         Route::get('/closings/months/{monthKey}/data', [ClosingsController::class, 'monthData'])
             ->where('monthKey', '[0-9]{6}');

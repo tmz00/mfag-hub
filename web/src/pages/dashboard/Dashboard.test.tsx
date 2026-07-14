@@ -132,6 +132,7 @@ describe("Dashboard page", () => {
     });
     getCurrentUserMock.mockReturnValue({
       uid: "user-1",
+      fscCode: "12345",
       accessLevel: "standard",
     });
     getHandbookEntriesMock.mockResolvedValue([
@@ -152,6 +153,7 @@ describe("Dashboard page", () => {
     expect(screen.getByText("Closings")).toBeTruthy();
     expect(screen.getByText("Team")).toBeTruthy();
     expect(screen.getByText("Products")).toBeTruthy();
+    expect(screen.queryByText("Attendance")).toBeNull();
     expect(screen.queryByText("Admin")).toBeNull();
 
     expect(screen.getByText("BMI")).toBeTruthy();
@@ -175,6 +177,24 @@ describe("Dashboard page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Admin")).toBeTruthy();
+    });
+  });
+
+  it("temporarily shows attendance quick access only for FSC 56523", async () => {
+    getCurrentUserMock.mockReturnValue({
+      uid: "user-56523",
+      fscCode: "56523",
+      accessLevel: "standard",
+    });
+    onAuthStateChangedMock.mockImplementation((callback: (user: any) => void) => {
+      callback({ uid: "user-56523", fscCode: "56523" });
+      return authUnsubscribeMock;
+    });
+
+    await renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Attendance")).toBeTruthy();
     });
   });
 

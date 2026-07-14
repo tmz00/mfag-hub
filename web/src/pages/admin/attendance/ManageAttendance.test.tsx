@@ -5,12 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getAdminMeetingsMock,
   getAdminMeetingMock,
+  deleteMeetingMock,
   markAttendanceMock,
   navigateMock,
   toDataUrlMock,
 } = vi.hoisted(() => ({
   getAdminMeetingsMock: vi.fn(),
   getAdminMeetingMock: vi.fn(),
+  deleteMeetingMock: vi.fn(),
   markAttendanceMock: vi.fn(),
   navigateMock: vi.fn(),
   toDataUrlMock: vi.fn(),
@@ -25,6 +27,7 @@ vi.mock("solid-icons/tb", () => {
     TbOutlineLoader2: Icon,
     TbOutlinePlus: Icon,
     TbOutlineRefresh: Icon,
+    TbOutlineTrash: Icon,
   };
 });
 
@@ -40,6 +43,7 @@ vi.mock("../../../services/attendanceService", () => ({
   attendanceService: {
     getAdminMeetings: (...args: unknown[]) => getAdminMeetingsMock(...args),
     getAdminMeeting: (...args: unknown[]) => getAdminMeetingMock(...args),
+    deleteMeeting: (...args: unknown[]) => deleteMeetingMock(...args),
     markAttendance: (...args: unknown[]) => markAttendanceMock(...args),
   },
 }));
@@ -50,6 +54,7 @@ describe("ManageAttendance", () => {
   beforeEach(() => {
     getAdminMeetingsMock.mockReset();
     getAdminMeetingMock.mockReset();
+    deleteMeetingMock.mockReset();
     markAttendanceMock.mockReset();
     navigateMock.mockReset();
     toDataUrlMock.mockReset();
@@ -80,6 +85,7 @@ describe("ManageAttendance", () => {
       ],
     });
     toDataUrlMock.mockResolvedValue("data:image/png;base64,qr");
+    deleteMeetingMock.mockResolvedValue(undefined);
     markAttendanceMock.mockResolvedValue(undefined);
   });
 
@@ -110,5 +116,20 @@ describe("ManageAttendance", () => {
       }),
     );
     expect(getAdminMeetingMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("deletes a meeting only after confirmation", async () => {
+    render(() => <ManageAttendance />);
+
+    expect(await screen.findByText("Weekly Meeting")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(deleteMeetingMock).not.toHaveBeenCalled();
+
+    expect(await screen.findByText("Delete Meeting?")).toBeTruthy();
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete" });
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+
+    await waitFor(() => expect(deleteMeetingMock).toHaveBeenCalledWith("meeting-1"));
+    expect(getAdminMeetingsMock).toHaveBeenCalledTimes(2);
   });
 });

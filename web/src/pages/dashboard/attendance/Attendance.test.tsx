@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { checkInMock, getMyHistoryMock, navigateMock } = vi.hoisted(() => ({
+const { checkInMock, getMyHistoryMock, jsQrMock, navigateMock } = vi.hoisted(() => ({
   checkInMock: vi.fn(),
   getMyHistoryMock: vi.fn(),
+  jsQrMock: vi.fn(),
   navigateMock: vi.fn(),
 }));
 
@@ -29,6 +30,10 @@ vi.mock("../../../services/attendanceService", () => ({
   },
 }));
 
+vi.mock("jsqr", () => ({
+  default: (...args: unknown[]) => jsQrMock(...args),
+}));
+
 import Attendance from "./Attendance";
 
 class BarcodeDetectorMock {
@@ -44,6 +49,7 @@ describe("Attendance", () => {
     vi.useRealTimers();
     checkInMock.mockReset();
     getMyHistoryMock.mockReset();
+    jsQrMock.mockReset();
     navigateMock.mockReset();
     getMyHistoryMock.mockResolvedValue([]);
     checkInMock.mockResolvedValue({
@@ -85,11 +91,19 @@ describe("Attendance", () => {
         return {
           width: 0,
           height: 0,
-          getContext: () => ({ drawImage: vi.fn() }),
+          getContext: () => ({
+            drawImage: vi.fn(),
+            getImageData: vi.fn(() => ({
+              data: new Uint8ClampedArray(640 * 480 * 4),
+              width: 640,
+              height: 480,
+            })),
+          }),
         } as unknown as HTMLCanvasElement;
       }
       return originalCreateElement(tagName);
     });
+    window.history.pushState({}, "", "/attendance");
   });
 
   it("scans a QR code, extracts the token, checks in, and refreshes history", async () => {
@@ -104,6 +118,36 @@ describe("Attendance", () => {
     expect(getMyHistoryMock).toHaveBeenCalledTimes(2);
 
     vi.useRealTimers();
+  });
+
+  it("falls back to jsQR when native barcode detection is unavailable", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "BarcodeDetector", {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    jsQrMock.mockReturnValue({
+      data: "https://mfag.test/attendance?token=fallback-token",
+    });
+    render(() => <Attendance />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Scan QR" }));
+    await vi.advanceTimersByTimeAsync(600);
+
+    await waitFor(() => expect(checkInMock).toHaveBeenCalledWith("fallback-token"));
+    expect(jsQrMock).toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("checks in directly when opened with an attendance token link", async () => {
+    window.history.pushState({}, "", "/attendance?token=link-token");
+
+    render(() => <Attendance />);
+
+    await waitFor(() => expect(checkInMock).toHaveBeenCalledWith("link-token"));
+    expect(await screen.findByText("Attendance recorded for Weekly Meeting.")).toBeTruthy();
   });
 
   it("shows existing attendance history", async () => {
