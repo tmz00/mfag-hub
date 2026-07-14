@@ -77,13 +77,26 @@ const Attendance: Component = () => {
   let videoRef: HTMLVideoElement | undefined;
   let stream: MediaStream | null = null;
   let scanTimer: number | undefined;
+  let cameraFrameTimer: number | undefined;
   let detecting = false;
+
+  const waitForVideoElement = async () => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      if (videoRef) return videoRef;
+      await Promise.resolve();
+    }
+    return videoRef;
+  };
 
   const stopScan = () => {
     setScanning(false);
     if (scanTimer) {
       window.clearInterval(scanTimer);
       scanTimer = undefined;
+    }
+    if (cameraFrameTimer) {
+      window.clearTimeout(cameraFrameTimer);
+      cameraFrameTimer = undefined;
     }
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -143,18 +156,29 @@ const Attendance: Component = () => {
       } catch {
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
       }
-      if (videoRef) {
-        videoRef.srcObject = stream;
-        await videoRef.play();
-      }
       const Detector = getBarcodeDetector();
       const detector = Detector ? new Detector({ formats: ["qr_code"] }) : null;
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
       setScanning(true);
+      const video = await waitForVideoElement();
+      if (!video) {
+        throw new Error("Unable to show camera preview. Please close and reopen Attendance.");
+      }
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      video.autoplay = true;
+      await video.play();
+      cameraFrameTimer = window.setTimeout(() => {
+        if (!scanning()) return;
+        if (video.videoWidth && video.videoHeight) return;
+        setError("Camera permission was granted, but no video preview started. Close the scanner and try again.");
+      }, 2500);
       scanTimer = window.setInterval(async () => {
         if (!videoRef || !context || checkingIn() || detecting) return;
         if (videoRef.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        if (!videoRef.videoWidth || !videoRef.videoHeight) return;
         detecting = true;
         try {
           canvas.width = videoRef.videoWidth;
@@ -217,11 +241,28 @@ const Attendance: Component = () => {
               </Show>
             </div>
 
-            <Show when={scanning()}>
-              <div class="mt-4 overflow-hidden rounded-lg bg-black">
-                <video ref={videoRef} playsinline muted class="aspect-video w-full object-cover" />
-              </div>
-            </Show>
+            <div class={scanning() ? "fixed inset-0 z-50 flex flex-col bg-black md:static md:mt-4 md:overflow-hidden md:rounded-lg" : "hidden"}>
+                <div class="flex items-center justify-between gap-3 bg-black/80 px-4 py-3 text-white md:hidden">
+                  <div class="font-semibold">Scan Attendance QR</div>
+                  <button
+                    type="button"
+                    onClick={stopScan}
+                    class="rounded-lg border border-white/30 px-3 py-1.5 text-sm font-semibold"
+                  >
+                    Close
+                  </button>
+                </div>
+                <video
+                  ref={videoRef}
+                  autoplay
+                  playsinline
+                  muted
+                  class="min-h-0 flex-1 object-cover md:aspect-video md:w-full"
+                />
+                <div class="bg-black/80 px-4 py-3 text-center text-sm text-white md:hidden">
+                  Point the camera at the meeting QR code.
+                </div>
+            </div>
 
             <Show when={!scanSupported()}>
               <div class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">

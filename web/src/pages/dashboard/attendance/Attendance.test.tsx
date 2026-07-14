@@ -76,6 +76,8 @@ describe("Attendance", () => {
         configurable: true,
         get: () => HTMLMediaElement.HAVE_CURRENT_DATA,
       },
+    });
+    Object.defineProperties(HTMLVideoElement.prototype, {
       videoWidth: {
         configurable: true,
         get: () => 640,
@@ -107,21 +109,16 @@ describe("Attendance", () => {
   });
 
   it("scans a QR code, extracts the token, checks in, and refreshes history", async () => {
-    vi.useFakeTimers();
     render(() => <Attendance />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Scan QR" }));
-    await vi.advanceTimersByTimeAsync(600);
+    fireEvent.click(screen.getByRole("button", { name: "Scan QR" }));
 
     await waitFor(() => expect(checkInMock).toHaveBeenCalledWith("scanned-token"));
     expect(await screen.findByText("Attendance recorded for Weekly Meeting.")).toBeTruthy();
     expect(getMyHistoryMock).toHaveBeenCalledTimes(2);
-
-    vi.useRealTimers();
   });
 
   it("falls back to jsQR when native barcode detection is unavailable", async () => {
-    vi.useFakeTimers();
     Object.defineProperty(window, "BarcodeDetector", {
       configurable: true,
       writable: true,
@@ -132,13 +129,10 @@ describe("Attendance", () => {
     });
     render(() => <Attendance />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Scan QR" }));
-    await vi.advanceTimersByTimeAsync(600);
+    fireEvent.click(screen.getByRole("button", { name: "Scan QR" }));
 
     await waitFor(() => expect(checkInMock).toHaveBeenCalledWith("fallback-token"));
     expect(jsQrMock).toHaveBeenCalled();
-
-    vi.useRealTimers();
   });
 
   it("checks in directly when opened with an attendance token link", async () => {
