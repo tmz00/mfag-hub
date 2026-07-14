@@ -121,6 +121,109 @@ class AttendanceControllerTest extends TestCase
             ->assertJsonPath('records.0.status', 'late');
     }
 
+    public function test_check_in_before_late_grace_period_marks_present(): void
+    {
+        $admin = $this->createUser('admin', ['fsc_code' => '91501']);
+        $fsc = $this->createUser('standard', [
+            'email' => 'present-checkin@example.test',
+            'fsc_code' => '11501',
+        ]);
+        Sanctum::actingAs($admin);
+        $meetingId = (int) $this->postJson('/api/attendance/admin/meetings', [
+            'title' => 'Present Check-in Test',
+            'startsAt' => '2026-06-09T10:00:00Z',
+            'endsAt' => '2026-06-09T12:00:00Z',
+            'attendeeMode' => 'all',
+        ])->assertCreated()->json('meeting.id');
+
+        $token = (string) DB::table('attendance_meetings')
+            ->where('id', $meetingId)
+            ->value('check_in_token');
+
+        Carbon::setTestNow(Carbon::parse('2026-06-09T10:14:59Z'));
+        Sanctum::actingAs($fsc);
+
+        $this->postJson('/api/attendance/check-in', ['token' => $token])
+            ->assertOk()
+            ->assertJsonPath('record.status', 'present')
+            ->assertJsonPath('duplicate', false);
+
+        $this->assertDatabaseHas('attendance_records', [
+            'meeting_id' => $meetingId,
+            'user_id' => $fsc->id,
+            'status' => 'present',
+        ]);
+    }
+
+    public function test_check_in_rejects_invalid_and_expired_tokens(): void
+    {
+        $admin = $this->createUser('admin', ['fsc_code' => '91601']);
+        $fsc = $this->createUser('standard', [
+            'email' => 'expired-checkin@example.test',
+            'fsc_code' => '11601',
+        ]);
+        Sanctum::actingAs($admin);
+        $meetingId = (int) $this->postJson('/api/attendance/admin/meetings', [
+            'title' => 'Expired Check-in Test',
+            'startsAt' => '2026-06-09T10:00:00Z',
+            'endsAt' => '2026-06-09T11:00:00Z',
+            'attendeeMode' => 'all',
+        ])->assertCreated()->json('meeting.id');
+
+        $token = (string) DB::table('attendance_meetings')
+            ->where('id', $meetingId)
+            ->value('check_in_token');
+
+        Sanctum::actingAs($fsc);
+        $this->postJson('/api/attendance/check-in', ['token' => 'not-a-real-token'])
+            ->assertNotFound()
+            ->assertJson(['message' => 'Invalid attendance QR code.']);
+
+        Carbon::setTestNow(Carbon::parse('2026-06-09T11:00:01Z'));
+        $this->postJson('/api/attendance/check-in', ['token' => $token])
+            ->assertStatus(422)
+            ->assertJson(['message' => 'This meeting check-in has closed.']);
+
+        $this->assertDatabaseMissing('attendance_records', [
+            'meeting_id' => $meetingId,
+            'user_id' => $fsc->id,
+        ]);
+    }
+
+    public function test_check_in_is_allowed_before_meeting_start_until_qr_expiry(): void
+    {
+        $admin = $this->createUser('admin', ['fsc_code' => '91701']);
+        $fsc = $this->createUser('standard', [
+            'email' => 'early-checkin@example.test',
+            'fsc_code' => '11701',
+        ]);
+        Sanctum::actingAs($admin);
+        $meetingId = (int) $this->postJson('/api/attendance/admin/meetings', [
+            'title' => 'Early Check-in Test',
+            'startsAt' => '2026-06-09T10:00:00Z',
+            'endsAt' => '2026-06-09T10:15:00Z',
+            'attendeeMode' => 'all',
+        ])->assertCreated()->json('meeting.id');
+
+        $token = (string) DB::table('attendance_meetings')
+            ->where('id', $meetingId)
+            ->value('check_in_token');
+
+        Carbon::setTestNow(Carbon::parse('2026-06-09T09:00:00Z'));
+        Sanctum::actingAs($fsc);
+
+        $this->postJson('/api/attendance/check-in', ['token' => $token])
+            ->assertOk()
+            ->assertJsonPath('record.status', 'present')
+            ->assertJsonPath('duplicate', false);
+
+        $this->assertDatabaseHas('attendance_records', [
+            'meeting_id' => $meetingId,
+            'user_id' => $fsc->id,
+            'status' => 'present',
+        ]);
+    }
+
     public function test_selected_meeting_rejects_unexpected_attendee(): void
     {
         $admin = $this->createUser('admin', ['fsc_code' => '92001']);
@@ -138,6 +241,7 @@ class AttendanceControllerTest extends TestCase
             ->where('id', $meetingId)
             ->value('check_in_token');
 
+        Carbon::setTestNow(Carbon::parse('2026-06-09T09:55:00+08:00'));
         Sanctum::actingAs($unexpected);
         $this->postJson('/api/attendance/check-in', ['token' => $token])
             ->assertForbidden()
@@ -198,6 +302,49 @@ class AttendanceControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('attendance.0.status', 'excused')
             ->assertJsonPath('attendance.0.markedBy', $admin->full_name);
+    }
+
+    public function test_admin_manual_override_can_change_scanned_attendance_to_excused(): void
+    {
+        $admin = $this->createUser('admin', ['fsc_code' => '95001']);
+        $fsc = $this->createUser('standard', [
+            'email' => 'override@example.test',
+            'fsc_code' => '15001',
+        ]);
+        Sanctum::actingAs($admin);
+        $meetingId = (int) $this->postJson('/api/attendance/admin/meetings', [
+            'title' => 'Manual Override',
+            'startsAt' => '2026-06-09T10:00:00Z',
+            'endsAt' => '2026-06-09T12:00:00Z',
+            'attendeeMode' => 'all',
+        ])->assertCreated()->json('meeting.id');
+        $token = (string) DB::table('attendance_meetings')
+            ->where('id', $meetingId)
+            ->value('check_in_token');
+
+        Carbon::setTestNow(Carbon::parse('2026-06-09T10:05:00Z'));
+        Sanctum::actingAs($fsc);
+        $this->postJson('/api/attendance/check-in', ['token' => $token])
+            ->assertOk()
+            ->assertJsonPath('record.status', 'present');
+
+        Sanctum::actingAs($admin);
+        $this->putJson("/api/attendance/admin/meetings/{$meetingId}/mark", [
+            'userId' => $fsc->id,
+            'status' => 'excused',
+            'note' => 'Phone camera failed during meeting',
+        ])->assertOk()
+            ->assertJsonPath('record.status', 'excused');
+
+        $record = DB::table('attendance_records')
+            ->where('meeting_id', $meetingId)
+            ->where('user_id', $fsc->id)
+            ->first();
+
+        $this->assertSame('excused', $record?->status);
+        $this->assertNull($record?->checked_in_at);
+        $this->assertSame($admin->id, (int) $record?->marked_by_id);
+        $this->assertSame('Phone camera failed during meeting', $record?->note);
     }
 
     private function createUser(string $accessLevel = 'standard', array $overrides = []): User

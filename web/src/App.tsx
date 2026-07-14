@@ -89,6 +89,12 @@ const ManageNotifications = lazy(
 const ManageAttendance = lazy(
   () => import("./pages/admin/attendance/ManageAttendance"),
 );
+const AttendanceAdmin = lazy(
+  () => import("./pages/admin/attendance/AttendanceAdmin"),
+);
+const CreateAttendanceMeeting = lazy(
+  () => import("./pages/admin/attendance/CreateAttendanceMeeting"),
+);
 const Attendance = lazy(
   () => import("./pages/dashboard/attendance/Attendance"),
 );
@@ -915,6 +921,30 @@ const App: Component = () => {
           />
           <Route
             path="/admin/attendance"
+            component={() => (
+              <Protected>
+                <AdminAccessGate deniedMessage="Only admins can manage attendance.">
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <AttendanceAdmin />
+                  </Suspense>
+                </AdminAccessGate>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/attendance/create"
+            component={() => (
+              <Protected>
+                <AdminAccessGate deniedMessage="Only admins can manage attendance.">
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <CreateAttendanceMeeting />
+                  </Suspense>
+                </AdminAccessGate>
+              </Protected>
+            )}
+          />
+          <Route
+            path="/admin/attendance/meetings"
             component={() => (
               <Protected>
                 <AdminAccessGate deniedMessage="Only admins can manage attendance.">

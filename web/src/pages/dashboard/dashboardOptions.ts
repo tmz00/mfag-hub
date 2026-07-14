@@ -4,7 +4,6 @@ import {
   TbOutlinePackage,
   TbOutlineSettings,
   TbOutlineScale,
-  TbOutlineCalendarCheck,
   TbOutlineHourglass,
   TbOutlinePlant,
   TbOutlineCrosshair,
@@ -49,7 +48,7 @@ export const dashboardOptions: Record<string, DashboardOption> = {
   attendance: {
     title: "Attendance",
     description: "Scan meeting QR and view history",
-    icon: TbOutlineCalendarCheck,
+    icon: TbOutlineUsers,
     href: "/attendance",
   },
   settings: {

@@ -4,6 +4,7 @@ import {
   TbOutlineBell,
   TbOutlinePackage,
   TbOutlineUsers,
+  TbOutlineCalendarCheck,
   TbOutlineBook,
   TbOutlineFileText,
   TbOutlineHistory,
@@ -52,9 +53,9 @@ export const adminOptionLinks: Record<string, AdminOption> = {
     href: "/admin/notifications",
   },
   attendance: {
-    title: "Meeting Attendance",
+    title: "Manage Attendance",
     description: "Create meeting QR codes and track FSC attendance",
-    icon: TbOutlineUsers,
+    icon: TbOutlineCalendarCheck,
     href: "/admin/attendance",
   },
   sources: {

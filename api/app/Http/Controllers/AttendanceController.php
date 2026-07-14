@@ -84,14 +84,17 @@ class AttendanceController extends Controller
             'attendeeUserIds.*' => ['integer', 'exists:users,id'],
         ]);
 
-        $meeting = DB::transaction(function () use ($payload, $request): AttendanceMeeting {
+        $startsAt = Carbon::parse((string) $payload['startsAt']);
+        $endsAt = isset($payload['endsAt']) && $payload['endsAt']
+            ? Carbon::parse((string) $payload['endsAt'])
+            : $startsAt->copy()->addMinutes(15);
+
+        $meeting = DB::transaction(function () use ($payload, $request, $startsAt, $endsAt): AttendanceMeeting {
             $meeting = AttendanceMeeting::query()->create([
                 'title' => trim((string) $payload['title']),
                 'description' => trim((string) ($payload['description'] ?? '')) ?: null,
-                'starts_at' => Carbon::parse((string) $payload['startsAt']),
-                'ends_at' => isset($payload['endsAt']) && $payload['endsAt']
-                    ? Carbon::parse((string) $payload['endsAt'])
-                    : null,
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
                 'location' => trim((string) ($payload['location'] ?? '')) ?: null,
                 'check_in_token' => Str::random(48),
                 'created_by_id' => $request->user()?->id,
@@ -131,7 +134,7 @@ class AttendanceController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        if ($meeting->ends_at && now()->greaterThan($meeting->ends_at->copy()->addMinutes(30))) {
+        if ($meeting->ends_at && now()->greaterThan($meeting->ends_at)) {
             return response()->json(['message' => 'This meeting check-in has closed.'], 422);
         }
 

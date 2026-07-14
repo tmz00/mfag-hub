@@ -38,6 +38,7 @@ vi.mock("solid-icons/tb", () => {
     TbOutlineBell: Icon,
     TbOutlinePackage: Icon,
     TbOutlineUsers: Icon,
+    TbOutlineCalendarCheck: Icon,
     TbOutlineBook: Icon,
     TbOutlineFileText: Icon,
     TbOutlineHistory: Icon,

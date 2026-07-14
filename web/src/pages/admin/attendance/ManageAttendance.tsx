@@ -11,7 +11,7 @@ import { useNavigate } from "@solidjs/router";
 import {
   TbOutlineCalendarCheck,
   TbOutlineChevronDown,
-  TbOutlineQrcode,
+  TbOutlinePlus,
   TbOutlineRefresh,
 } from "solid-icons/tb";
 import { toDataURL } from "qrcode";
@@ -29,7 +29,6 @@ import {
   type AttendanceMeeting,
   type AttendanceUserRecord,
 } from "../../../services/attendanceService";
-import { teamService, type TeamUser } from "../../../services/teamService";
 
 const formatDateTime = (value?: string) => {
   if (!value) return "";
@@ -39,11 +38,6 @@ const formatDateTime = (value?: string) => {
     dateStyle: "medium",
     timeStyle: "short",
   });
-};
-
-const toLocalInputValue = (date: Date) => {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
 const getCheckInValue = (token?: string) => {
@@ -77,25 +71,12 @@ const ManageAttendance: Component = () => {
   const [meetings, { refetch: refetchMeetings }] = createResource(() =>
     attendanceService.getAdminMeetings(),
   );
-  const [team] = createResource(() =>
-    teamService.getTeamData({ includeDeletedAgencies: false }),
-  );
   const [selectedMeetingId, setSelectedMeetingId] = createSignal("");
   const [meetingDetail, setMeetingDetail] = createSignal<AttendanceMeeting | null>(null);
   const [attendance, setAttendance] = createSignal<AttendanceUserRecord[]>([]);
   const [detailLoading, setDetailLoading] = createSignal(false);
   const [error, setError] = createSignal("");
-  const [success, setSuccess] = createSignal("");
   const [qrDataUrl, setQrDataUrl] = createSignal("");
-
-  const [title, setTitle] = createSignal("");
-  const [location, setLocation] = createSignal("");
-  const [description, setDescription] = createSignal("");
-  const [startsAt, setStartsAt] = createSignal(toLocalInputValue(new Date()));
-  const [endsAt, setEndsAt] = createSignal("");
-  const [attendeeMode, setAttendeeMode] = createSignal<"all" | "selected">("all");
-  const [selectedUserIds, setSelectedUserIds] = createSignal<string[]>([]);
-  const [creating, setCreating] = createSignal(false);
   const [openStatusUserId, setOpenStatusUserId] = createSignal("");
   const [pendingStatusChange, setPendingStatusChange] = createSignal<{
     user: AttendanceUserRecord;
@@ -103,14 +84,11 @@ const ManageAttendance: Component = () => {
   } | null>(null);
   const [markingStatus, setMarkingStatus] = createSignal(false);
 
-  const activeUsers = () =>
-    (team()?.users || []).filter((user) => String(user.fscCode || "").trim());
-
   const selectedMeeting = () => meetingDetail();
 
   onMount(() => {
-    const token = new URLSearchParams(window.location.search).get("meeting");
-    if (token) setSelectedMeetingId(token);
+    const meetingId = new URLSearchParams(window.location.search).get("meeting");
+    if (meetingId) setSelectedMeetingId(meetingId);
   });
 
   createEffect(() => {
@@ -127,8 +105,7 @@ const ManageAttendance: Component = () => {
   });
 
   createEffect(() => {
-    const meeting = selectedMeeting();
-    const value = getCheckInValue(meeting?.checkInToken);
+    const value = getCheckInValue(selectedMeeting()?.checkInToken);
     if (!value) {
       setQrDataUrl("");
       return;
@@ -158,59 +135,6 @@ const ManageAttendance: Component = () => {
     }
   };
 
-  const toggleUser = (user: TeamUser) => {
-    const id = user.id;
-    setSelectedUserIds((current) =>
-      current.includes(id)
-        ? current.filter((value) => value !== id)
-        : [...current, id],
-    );
-  };
-
-  const createMeeting = async () => {
-    if (!title().trim()) {
-      setError("Meeting title is required.");
-      return;
-    }
-    if (!startsAt()) {
-      setError("Meeting start time is required.");
-      return;
-    }
-    if (attendeeMode() === "selected" && selectedUserIds().length === 0) {
-      setError("Select at least one expected attendee or choose All users.");
-      return;
-    }
-
-    setCreating(true);
-    setError("");
-    setSuccess("");
-    try {
-      const meeting = await attendanceService.createMeeting({
-        title: title().trim(),
-        location: location().trim(),
-        description: description().trim(),
-        startsAt: new Date(startsAt()).toISOString(),
-        endsAt: endsAt() ? new Date(endsAt()).toISOString() : undefined,
-        attendeeMode: attendeeMode(),
-        attendeeUserIds: selectedUserIds(),
-      });
-      setTitle("");
-      setLocation("");
-      setDescription("");
-      setEndsAt("");
-      setSelectedUserIds([]);
-      setAttendeeMode("all");
-      setSelectedMeetingId(meeting.id);
-      setSuccess("Meeting created.");
-      await refetchMeetings();
-      await loadMeeting(meeting.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create meeting");
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const requestStatusChange = (
     user: AttendanceUserRecord,
     status: AttendanceStatus,
@@ -222,10 +146,9 @@ const ManageAttendance: Component = () => {
 
   const confirmStatusChange = async () => {
     const change = pendingStatusChange();
-    if (!change) return;
-
     const meeting = selectedMeeting();
-    if (!meeting) return;
+    if (!change || !meeting) return;
+
     setError("");
     setMarkingStatus(true);
     try {
@@ -247,132 +170,45 @@ const ManageAttendance: Component = () => {
     <PageShell>
       <PageHeader
         variant="admin"
-        onBack={() => navigate("/admin")}
+        onBack={() => navigate("/admin/attendance")}
         icon={<TbOutlineCalendarCheck class="h-5 w-5" />}
-        title="Attendance"
-        subtitle="Create meeting QR codes and track attendance"
+        title="Past Meetings"
+        subtitle="View QR codes and manage attendance records"
+        actions={
+          <Button
+            type="button"
+            variant="adminOutline"
+            size="sm"
+            onClick={() => navigate("/admin/attendance/create")}
+            class="!bg-white/10 !text-white hover:!bg-white/20"
+          >
+            <TbOutlinePlus class="h-4 w-4" />
+            New
+          </Button>
+        }
       />
       <PageBody>
-        <div class="grid gap-5 xl:grid-cols-[minmax(340px,420px)_1fr]">
-          <section class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <div>
-              <h2 class="text-lg font-semibold text-gray-900">Create Meeting</h2>
-              <p class="text-sm text-gray-500">Generate a QR code for FSC check-in.</p>
-            </div>
-            <div class="space-y-3">
-              <label class="block">
-                <span class="text-sm font-semibold text-gray-700">Title</span>
-                <input
-                  value={title()}
-                  onInput={(event) => setTitle(event.currentTarget.value)}
-                  class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-                />
-              </label>
-              <div class="grid gap-3 sm:grid-cols-2">
-                <label class="block">
-                  <span class="text-sm font-semibold text-gray-700">Starts</span>
-                  <input
-                    type="datetime-local"
-                    value={startsAt()}
-                    onInput={(event) => setStartsAt(event.currentTarget.value)}
-                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-                  />
-                </label>
-                <label class="block">
-                  <span class="text-sm font-semibold text-gray-700">Ends</span>
-                  <input
-                    type="datetime-local"
-                    value={endsAt()}
-                    onInput={(event) => setEndsAt(event.currentTarget.value)}
-                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-                  />
-                </label>
+        <div class="space-y-4">
+          <Show when={error()}>
+            <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-base text-red-700">{error()}</div>
+          </Show>
+
+          <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900">Meetings</h2>
+                <p class="text-sm text-gray-500">Select a meeting to show its QR and attendance list.</p>
               </div>
-              <label class="block">
-                <span class="text-sm font-semibold text-gray-700">Location</span>
-                <input
-                  value={location()}
-                  onInput={(event) => setLocation(event.currentTarget.value)}
-                  class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-                />
-              </label>
-              <label class="block">
-                <span class="text-sm font-semibold text-gray-700">Notes</span>
-                <textarea
-                  value={description()}
-                  onInput={(event) => setDescription(event.currentTarget.value)}
-                  rows={2}
-                  class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-                />
-              </label>
-              <div class="rounded-lg border border-gray-200 p-3">
-                <div class="mb-2 text-sm font-semibold text-gray-700">Expected Attendees</div>
-                <div class="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAttendeeMode("all")}
-                    class={`rounded-lg border px-3 py-2 text-sm font-semibold ${attendeeMode() === "all" ? "border-admin-from bg-admin-from/10 text-admin-from" : "border-gray-200 text-gray-600"}`}
-                  >
-                    All users
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAttendeeMode("selected")}
-                    class={`rounded-lg border px-3 py-2 text-sm font-semibold ${attendeeMode() === "selected" ? "border-admin-from bg-admin-from/10 text-admin-from" : "border-gray-200 text-gray-600"}`}
-                  >
-                    Selected
-                  </button>
-                </div>
-                <Show when={attendeeMode() === "selected"}>
-                  <div class="mt-3 max-h-48 space-y-1 overflow-auto rounded-lg bg-gray-50 p-2">
-                    <For each={activeUsers()}>
-                      {(user) => (
-                        <label class="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-white">
-                          <input
-                            type="checkbox"
-                            checked={selectedUserIds().includes(user.id)}
-                            onChange={() => toggleUser(user)}
-                          />
-                          <span>{user.fscCode} · {user.nickname || user.fullName || user.email}</span>
-                        </label>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-              </div>
-              <Button
-                type="button"
-                variant="admin"
-                fullWidth
-                onClick={() => void createMeeting()}
-                disabled={creating()}
-              >
-                <TbOutlineQrcode class="h-5 w-5" />
-                {creating() ? "Creating..." : "Create QR Meeting"}
+              <Button type="button" variant="secondary" size="sm" onClick={() => void refetchMeetings()}>
+                <TbOutlineRefresh class="h-4 w-4" />
+                Refresh
               </Button>
             </div>
-          </section>
-
-          <section class="space-y-4">
-            <Show when={error()}>
-              <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-base text-red-700">{error()}</div>
-            </Show>
-            <Show when={success()}>
-              <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-base text-emerald-700">{success()}</div>
-            </Show>
-
-            <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 class="text-lg font-semibold text-gray-900">Meetings</h2>
-                  <p class="text-sm text-gray-500">Select a meeting to show its QR and attendance list.</p>
-                </div>
-                <Button type="button" variant="secondary" size="sm" onClick={() => void refetchMeetings()}>
-                  <TbOutlineRefresh class="h-4 w-4" />
-                  Refresh
-                </Button>
-              </div>
-              <Show when={!meetings.loading} fallback={<LoadingState label="Loading meetings..." />}>
+            <Show when={!meetings.loading} fallback={<LoadingState label="Loading meetings..." />}>
+              <Show
+                when={(meetings() || []).length > 0}
+                fallback={<div class="rounded-lg bg-gray-50 p-4 text-gray-500">No meetings yet.</div>}
+              >
                 <select
                   value={selectedMeetingId()}
                   onChange={(event) => setSelectedMeetingId(event.currentTarget.value)}
@@ -387,94 +223,92 @@ const ManageAttendance: Component = () => {
                   </For>
                 </select>
               </Show>
-            </div>
+            </Show>
+          </div>
 
-            <Show when={selectedMeeting()} fallback={<div class="rounded-lg border border-gray-200 bg-white p-4 text-gray-500">Create or select a meeting.</div>}>
-              {(meeting) => (
-                <div class="grid gap-4 lg:grid-cols-[360px_1fr]">
-                  <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                    <h2 class="text-lg font-semibold text-gray-900">{meeting().title}</h2>
-                    <div class="mt-1 text-sm text-gray-500">{formatDateTime(meeting().startsAt)}</div>
-                    <Show when={meeting().location}>
-                      <div class="mt-1 text-sm text-gray-500">{meeting().location}</div>
+          <Show when={selectedMeeting()}>
+            {(meeting) => (
+              <div class="grid gap-4 lg:grid-cols-[360px_1fr]">
+                <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <h2 class="text-lg font-semibold text-gray-900">{meeting().title}</h2>
+                  <div class="mt-1 text-sm text-gray-500">{formatDateTime(meeting().startsAt)}</div>
+                  <Show when={meeting().location}>
+                    <div class="mt-1 text-sm text-gray-500">{meeting().location}</div>
+                  </Show>
+                  <div class="mt-4 flex justify-center rounded-lg bg-white p-3 ring-1 ring-gray-200">
+                    <Show when={qrDataUrl()} fallback={<div class="py-20 text-sm text-gray-500">Generating QR...</div>}>
+                      <img src={qrDataUrl()} alt="Attendance QR code" class="h-72 w-72" />
                     </Show>
-                    <div class="mt-4 flex justify-center rounded-lg bg-white p-3 ring-1 ring-gray-200">
-                      <Show when={qrDataUrl()} fallback={<div class="py-20 text-sm text-gray-500">Generating QR...</div>}>
-                        <img src={qrDataUrl()} alt="Attendance QR code" class="h-72 w-72" />
-                      </Show>
-                    </div>
-                    <div class="mt-3 break-all rounded-lg bg-gray-50 p-2 text-xs text-gray-500">
-                      {getCheckInValue(meeting().checkInToken)}
-                    </div>
                   </div>
-
-                  <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                    <div class="mb-3 flex items-center justify-between">
-                      <h2 class="text-lg font-semibold text-gray-900">Attendance</h2>
-                      <div class="text-sm text-gray-500">{attendance().filter((row) => row.status === "present" || row.status === "late").length} / {attendance().length}</div>
-                    </div>
-                    <Show when={!detailLoading()} fallback={<LoadingState label="Loading attendance..." />}>
-                      <div class="overflow-x-auto">
-                        <table class="min-w-full text-left text-sm">
-                          <thead class="border-b border-gray-200 text-gray-500">
-                            <tr>
-                              <th class="py-2 pr-3 font-semibold">FSC</th>
-                              <th class="py-2 pr-3 font-semibold">Name</th>
-                              <th class="py-2 pr-3 font-semibold">Status</th>
-                              <th class="py-2 pr-3 font-semibold">Checked In</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <For each={attendance()}>
-                              {(row) => (
-                                <tr class="border-b border-gray-100">
-                                  <td class="py-2 pr-3 text-gray-700">{row.fscCode}</td>
-                                  <td class="py-2 pr-3 text-gray-900">{row.nickname || row.fullName || row.email}</td>
-                                  <td class="relative py-2 pr-3">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setOpenStatusUserId(
-                                          openStatusUserId() === row.userId
-                                            ? ""
-                                            : row.userId,
-                                        )
-                                      }
-                                      class={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ring-1 transition hover:brightness-95 ${statusClass(row.status)}`}
-                                    >
-                                      {statusLabel(row.status)}
-                                      <TbOutlineChevronDown class="h-3.5 w-3.5" />
-                                    </button>
-                                    <Show when={openStatusUserId() === row.userId}>
-                                      <div class="absolute left-0 top-9 z-20 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                                        <For each={attendanceStatuses}>
-                                          {(status) => (
-                                            <button
-                                              type="button"
-                                              disabled={row.status === status}
-                                              onClick={() => requestStatusChange(row, status)}
-                                              class="block w-full px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-400"
-                                            >
-                                              {statusLabel(status)}
-                                            </button>
-                                          )}
-                                        </For>
-                                      </div>
-                                    </Show>
-                                  </td>
-                                  <td class="py-2 pr-3 text-gray-600">{formatDateTime(row.checkedInAt)}</td>
-                                </tr>
-                              )}
-                            </For>
-                          </tbody>
-                        </table>
-                      </div>
-                    </Show>
+                  <div class="mt-3 break-all rounded-lg bg-gray-50 p-2 text-xs text-gray-500">
+                    {getCheckInValue(meeting().checkInToken)}
                   </div>
                 </div>
-              )}
-            </Show>
-          </section>
+
+                <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <div class="mb-3 flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-gray-900">Attendance</h2>
+                    <div class="text-sm text-gray-500">{attendance().filter((row) => row.status === "present" || row.status === "late").length} / {attendance().length}</div>
+                  </div>
+                  <Show when={!detailLoading()} fallback={<LoadingState label="Loading attendance..." />}>
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full text-left text-sm">
+                        <thead class="border-b border-gray-200 text-gray-500">
+                          <tr>
+                            <th class="py-2 pr-3 font-semibold">FSC</th>
+                            <th class="py-2 pr-3 font-semibold">Name</th>
+                            <th class="py-2 pr-3 font-semibold">Status</th>
+                            <th class="py-2 pr-3 font-semibold">Checked In</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <For each={attendance()}>
+                            {(row) => (
+                              <tr class="border-b border-gray-100">
+                                <td class="py-2 pr-3 text-gray-700">{row.fscCode}</td>
+                                <td class="py-2 pr-3 text-gray-900">{row.nickname || row.fullName || row.email}</td>
+                                <td class="relative py-2 pr-3">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setOpenStatusUserId(
+                                        openStatusUserId() === row.userId ? "" : row.userId,
+                                      )
+                                    }
+                                    class={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ring-1 transition hover:brightness-95 ${statusClass(row.status)}`}
+                                  >
+                                    {statusLabel(row.status)}
+                                    <TbOutlineChevronDown class="h-3.5 w-3.5" />
+                                  </button>
+                                  <Show when={openStatusUserId() === row.userId}>
+                                    <div class="absolute left-0 top-9 z-20 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                                      <For each={attendanceStatuses}>
+                                        {(status) => (
+                                          <button
+                                            type="button"
+                                            disabled={row.status === status}
+                                            onClick={() => requestStatusChange(row, status)}
+                                            class="block w-full px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-400"
+                                          >
+                                            {statusLabel(status)}
+                                          </button>
+                                        )}
+                                      </For>
+                                    </div>
+                                  </Show>
+                                </td>
+                                <td class="py-2 pr-3 text-gray-600">{formatDateTime(row.checkedInAt)}</td>
+                              </tr>
+                            )}
+                          </For>
+                        </tbody>
+                      </table>
+                    </div>
+                  </Show>
+                </div>
+              </div>
+            )}
+          </Show>
         </div>
       </PageBody>
       <ConfirmModal

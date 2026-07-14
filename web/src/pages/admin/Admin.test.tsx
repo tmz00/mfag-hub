@@ -22,6 +22,7 @@ vi.mock("solid-icons/tb", () => {
     TbOutlineBell: Icon,
     TbOutlinePackage: Icon,
     TbOutlineUsers: Icon,
+    TbOutlineCalendarCheck: Icon,
     TbOutlineBook: Icon,
     TbOutlineFileText: Icon,
     TbOutlineHistory: Icon,
@@ -145,7 +146,7 @@ describe("Admin page", () => {
 
     expect(screen.getByText("Manage Report Templates")).toBeTruthy();
     expect(screen.getByText("Manage Notifications")).toBeTruthy();
-    expect(screen.getByText("Meeting Attendance")).toBeTruthy();
+    expect(screen.getByText("Manage Attendance")).toBeTruthy();
     expect(screen.getByText("Manage Closing Sources")).toBeTruthy();
     expect(screen.getByText("Manage Products")).toBeTruthy();
     expect(screen.getByText("Manage Team")).toBeTruthy();
